@@ -2,7 +2,6 @@ package com.payment.split.job; // 补偿 Job 包
 
 import com.fasterxml.jackson.core.JsonProcessingException; // JSON 异常
 import com.fasterxml.jackson.databind.ObjectMapper; // JSON 工具
-import com.payment.api.dto.FeeCalcResultDTO; // 计费 DTO
 import com.payment.common.enums.TaskStatus; // 任务状态
 import com.payment.domain.entity.ClearanceTaskEntity; // 清算任务
 import com.payment.domain.entity.OutboxMessageEntity; // Outbox

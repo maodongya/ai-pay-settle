@@ -8,7 +8,6 @@ import com.payment.common.exception.BizException; // 业务异常
 import com.payment.common.exception.ErrorCode; // 错误码
 import com.payment.common.util.MoneyUtils; // 金额工具类
 import com.payment.domain.entity.FeeShareRuleEntity; // 分润规则实体
-import com.payment.domain.entity.MerchantContractEntity; // 商户合约实体
 import com.payment.domain.repository.MerchantContractRepository; // 商户合约仓储
 import org.springframework.stereotype.Component; // Spring 组件注解
 
