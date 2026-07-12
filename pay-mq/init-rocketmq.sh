@@ -19,23 +19,39 @@ TOPICS=(
 
 detect_host_ip() {
   local ip=""
-  ip=$(ipconfig getifaddr en0 2>/dev/null || true)
-  if [[ -z "$ip" ]]; then
-    ip=$(ipconfig getifaddr en1 2>/dev/null || true)
+  # macOS：优先 en0 / en1
+  if command -v ipconfig >/dev/null 2>&1; then
+    ip=$(ipconfig getifaddr en0 2>/dev/null || true)
+    if [[ -z "$ip" ]]; then
+      ip=$(ipconfig getifaddr en1 2>/dev/null || true)
+    fi
+  fi
+  # Linux：优先 ip route
+  if [[ -z "$ip" ]] && command -v ip >/dev/null 2>&1; then
+    ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit }}' || true)
+  fi
+  # 兜底：ifconfig（命令不存在或失败时不触发 set -u / set -e）
+  if [[ -z "$ip" ]] && command -v ifconfig >/dev/null 2>&1; then
+    ip=$(ifconfig 2>/dev/null | awk '/inet / && $2 != "127.0.0.1" { print $2; exit }' || true)
   fi
   if [[ -z "$ip" ]]; then
-    ip=$(ifconfig | awk '/inet / && $2 != "127.0.0.1" {print $2; exit}')
-  fi
-  if [[ -z "$ip" ]]; then
-    echo "无法自动检测本机 IP，请手动编辑 pay-mq/broker-runtime.conf 中的 brokerIP1" >&2
+    echo "无法自动检测本机 IP，将使用 127.0.0.1；可 export BROKER_IP1=你的IP 覆盖" >&2
     ip="127.0.0.1"
   fi
   echo "$ip"
 }
 
-HOST_IP="${BROKER_IP1:-$(detect_host_ip)}"
-echo ">>> 使用 brokerIP1=$HOST_IP（Dashboard/客户端通过此地址访问 Broker）"
-sed "s/^brokerIP1=.*/brokerIP1=$HOST_IP/" "$BROKER_TEMPLATE" > "$BROKER_RUNTIME"
+# 避免 set -e 与命令替换组合导致 HOST_IP 未赋值
+if [[ -n "${BROKER_IP1:-}" ]]; then
+  HOST_IP="$BROKER_IP1"
+else
+  HOST_IP="$(detect_host_ip || echo 127.0.0.1)"
+fi
+if [[ -z "$HOST_IP" ]]; then
+  HOST_IP="127.0.0.1"
+fi
+echo ">>> 使用 brokerIP1=${HOST_IP} (Dashboard/客户端通过此地址访问 Broker)"
+sed "s/^brokerIP1=.*/brokerIP1=${HOST_IP}/" "$BROKER_TEMPLATE" > "$BROKER_RUNTIME"
 
 echo ">>> 清理旧容器（若存在）..."
 docker rm -f rmq-dashboard rmq-broker rmq-namesrv 2>/dev/null || true
@@ -74,7 +90,7 @@ echo ""
 echo ">>> 完成"
 echo "  NameServer : 127.0.0.1:9877"
 echo "  Dashboard  : http://127.0.0.1:8081"
-echo "  brokerIP1  : $HOST_IP"
+echo "  brokerIP1  : ${HOST_IP}"
 echo ""
 echo "  pay-app 启动: --spring.profiles.active=h2,mq"
 echo "  压测命令    : --name-server=127.0.0.1:9877"
