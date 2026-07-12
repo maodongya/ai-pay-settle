@@ -15,14 +15,16 @@ import java.util.concurrent.ConcurrentHashMap; // 按 hashKey 维护锁对象
 public class LocalPayMqProducer implements PayMqProducer {
 
     private final LocalMqHandlerRegistry registry; // 本地 Handler 注册表
+    private final PayMqProduceMetrics produceMetrics; // 生产指标
     /** hashKey → 锁对象，保证 Local 模式下同一 Key 串行消费 */
     private final ConcurrentHashMap<String, Object> orderlyLocks = new ConcurrentHashMap<>(); // 有序锁缓存
 
     /**
      * 构造注入注册表。
      */
-    public LocalPayMqProducer(LocalMqHandlerRegistry registry) {
+    public LocalPayMqProducer(LocalMqHandlerRegistry registry, PayMqProduceMetrics produceMetrics) {
         this.registry = registry; // 保存注册表
+        this.produceMetrics = produceMetrics; // 保存指标
     }
 
     @Override // 普通发送
@@ -37,15 +39,17 @@ public class LocalPayMqProducer implements PayMqProducer {
 
     @Override // 带 Tag/Keys 发送（Local 忽略 tag/keys，按 topic 分发）
     public void send(String topic, String tag, String keys, String payload) {
-        registry.dispatch(topic, payload); // 同步调用 Handler
+        produceMetrics.record(topic, () -> registry.dispatch(topic, payload));
     }
 
     @Override // 有序发送：同 hashKey 加锁后 dispatch
     public void sendOrderly(String topic, String tag, String hashKey, String payload) {
         String key = hashKey != null ? hashKey : ""; // 空 Key 归一化
-        Object lock = orderlyLocks.computeIfAbsent(key, k -> new Object()); // 获取或创建锁
-        synchronized (lock) { // 同 Key 串行
-            registry.dispatch(topic, payload); // 同步调用 Handler
-        }
+        produceMetrics.record(topic, () -> {
+            Object lock = orderlyLocks.computeIfAbsent(key, k -> new Object()); // 获取或创建锁
+            synchronized (lock) { // 同 Key 串行
+                registry.dispatch(topic, payload); // 同步调用 Handler
+            }
+        });
     }
 }

@@ -19,6 +19,9 @@ public interface OutboxMessageRepository {
     /** 统计指定状态的 Outbox 行数（积压监控） */
     long countByStatus(Integer status);
 
+    /** 最老待发送 Outbox 的年龄（秒），无 pending 时返回 0 */
+    long oldestPendingAgeSeconds();
+
     /** 按业务键查询（补偿 Job 判断是否已有 Outbox） */
     boolean existsByBizKey(String bizKey);
 }

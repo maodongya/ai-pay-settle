@@ -7,6 +7,8 @@ import com.payment.domain.repository.OutboxMessageRepository;
 import com.payment.domain.support.MapperHelper;
 import org.springframework.stereotype.Repository;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -40,6 +42,18 @@ public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
     public long countByStatus(Integer status) {
         return outboxMessageMapper.selectCount(new QueryWrapper<OutboxMessageEntity>()
                 .eq("status", status));
+    }
+
+    @Override
+    public long oldestPendingAgeSeconds() {
+        OutboxMessageEntity oldest = outboxMessageMapper.selectOne(new QueryWrapper<OutboxMessageEntity>()
+                .eq("status", 0)
+                .orderByAsc("create_time")
+                .last("LIMIT 1"));
+        if (oldest == null || oldest.createTime == null) {
+            return 0L;
+        }
+        return Duration.between(oldest.createTime, LocalDateTime.now()).getSeconds();
     }
 
     @Override

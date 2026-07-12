@@ -34,4 +34,10 @@ public class ExceptionRecordRepositoryImpl implements ExceptionRecordRepository 
                 .eq("exception_code", exceptionCode) // 异常码
                 .in("status", 0, 1))); // 待处理或处理中
     }
+
+    @Override
+    public long countOpen() {
+        return exceptionRecordMapper.selectCount(new QueryWrapper<ExceptionRecordEntity>()
+                .in("status", 0, 1));
+    }
 }

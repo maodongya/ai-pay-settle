@@ -8,4 +8,7 @@ import com.payment.domain.entity.AlertRecordEntity;
 public interface AlertRecordRepository {
 
     AlertRecordEntity save(AlertRecordEntity entity);
+
+    /** 未处理告警数 */
+    long countOpen();
 }

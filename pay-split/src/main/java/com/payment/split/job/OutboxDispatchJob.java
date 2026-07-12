@@ -8,6 +8,7 @@ import com.payment.domain.repository.OutboxMessageRepository; // Outbox 仓储
 import com.payment.mq.MqTags; // CREDIT Tag
 import com.payment.mq.PayMqProducer; // 生产者
 import com.payment.mq.config.PayMqProperties; // MQ 开关
+import com.payment.mq.support.PayMqProduceMetrics; // 投递指标
 import org.slf4j.Logger; // 日志
 import org.slf4j.LoggerFactory; // 日志工厂
 import org.springframework.beans.factory.annotation.Value; // 注入 batch 配置
@@ -30,6 +31,7 @@ public class OutboxDispatchJob {
     private final PayMqProperties payMqProperties; // MQ 配置
     private final ObjectMapper objectMapper; // 解析 merchantId
     private final AlertService alertService; // 失败告警
+    private final PayMqProduceMetrics produceMetrics; // Outbox 投递指标
     private final int batchSize; // 每批条数
 
     /** 构造注入 */
@@ -38,12 +40,14 @@ public class OutboxDispatchJob {
                              PayMqProperties payMqProperties,
                              ObjectMapper objectMapper,
                              AlertService alertService,
+                             PayMqProduceMetrics produceMetrics,
                              @Value("${pay.outbox.dispatch-batch-size:200}") int batchSize) {
         this.outboxMessageRepository = outboxMessageRepository; // 仓储
         this.payMqProducer = payMqProducer; // 生产者
         this.payMqProperties = payMqProperties; // 配置
         this.objectMapper = objectMapper; // JSON
         this.alertService = alertService; // 告警
+        this.produceMetrics = produceMetrics; // 指标
         this.batchSize = batchSize; // 批量大小
     }
 
@@ -63,8 +67,10 @@ public class OutboxDispatchJob {
                 payMqProducer.sendOrderly(msg.topic, MqTags.CREDIT, hashKey, msg.payload); // 有序发送
                 msg.status = 1; // 已发送
                 outboxMessageRepository.save(msg); // 更新状态
+                produceMetrics.recordOutboxDispatch(msg.topic, true);
             } catch (Exception e) { // 发送失败
                 failCount++; // 失败 +1
+                produceMetrics.recordOutboxDispatch(msg.topic, false);
                 log.warn("outbox dispatch failed id={}", msg.id, e); // 警告日志
             }
         }

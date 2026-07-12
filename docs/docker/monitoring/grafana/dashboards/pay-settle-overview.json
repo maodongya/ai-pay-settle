@@ -1,0 +1,196 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "MQ 消费 TPS（合计）",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_mq_consume_total{status=\"success\"}[1m]))",
+          "legendFormat": "consume tps"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "stat",
+      "title": "MQ 生产 TPS（合计）",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_mq_produce_total{status=\"success\"}[1m]))",
+          "legendFormat": "produce tps"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "stat",
+      "title": "HTTP 接入 TPS",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_http_request_total{status=~\"2..\"}[1m]))",
+          "legendFormat": "http tps"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "stat",
+      "title": "端到端完成 TPS",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_business_throughput_total{stage=\"split_done\",status=\"success\"}[1m]))",
+          "legendFormat": "e2e tps"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "分 Topic 消费 TPS",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_mq_consume_total{status=\"success\"}[1m])) by (topic)",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "分 Topic 生产 TPS",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_mq_produce_total{status=\"success\"}[1m])) by (topic)",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "业务完成 TPS（按 stage）",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_business_throughput_total{status=\"success\"}[1m])) by (stage)",
+          "legendFormat": "{{stage}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "生产-消费 TPS 差值",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_mq_produce_total{status=\"success\"}[1m])) by (topic) - sum(rate(pay_mq_consume_total{status=\"success\"}[1m])) by (topic)",
+          "legendFormat": "{{topic}} gap"
+        },
+        {
+          "expr": "pay_tps_produce_consume_gap",
+          "legendFormat": "{{topic}} gauge"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "积压：Outbox / 清算 Pending",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "pay_outbox_pending", "legendFormat": "outbox pending" },
+        { "expr": "pay_clearance_pending", "legendFormat": "clearance pending" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "消费 P99 耗时（秒）",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(pay_mq_consume_duration_seconds_bucket[5m])) by (le, topic))",
+          "legendFormat": "{{topic}} p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "stat",
+      "title": "MQ 熔断",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 28 },
+      "targets": [{ "expr": "pay_mq_circuit_open", "legendFormat": "circuit" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "CLOSED", "color": "green" }, "1": { "text": "OPEN", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "未处理告警",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 28 },
+      "targets": [{ "expr": "pay_alert_open_total", "legendFormat": "alerts" }]
+    },
+    {
+      "type": "stat",
+      "title": "未关闭工单",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 28 },
+      "targets": [{ "expr": "sum(pay_exception_open_total)", "legendFormat": "exceptions" }]
+    },
+    {
+      "type": "stat",
+      "title": "JVM 堆使用",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 28 },
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) / sum(jvm_memory_max_bytes{area=\"heap\"}) * 100",
+          "legendFormat": "heap %"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "type": "stat",
+      "title": "HikariCP Active",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 28 },
+      "targets": [{ "expr": "hikaricp_connections_active", "legendFormat": "active" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "消费失败率",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "sum(rate(pay_mq_consume_total{status=\"fail\"}[5m])) by (topic) / sum(rate(pay_mq_consume_total[5m])) by (topic)",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["pay-settle", "monitoring"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Pay-Settle Overview",
+  "uid": "pay-settle-overview",
+  "version": 1
+}

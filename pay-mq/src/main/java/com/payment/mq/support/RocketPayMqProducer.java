@@ -16,12 +16,14 @@ import org.springframework.stereotype.Component; // 注册为组件
 public class RocketPayMqProducer implements PayMqProducer {
 
     private final RocketMQTemplate rocketMQTemplate; // RocketMQ 发送模板
+    private final PayMqProduceMetrics produceMetrics; // 生产指标
 
     /**
      * 构造注入 RocketMQTemplate。
      */
-    public RocketPayMqProducer(RocketMQTemplate rocketMQTemplate) {
+    public RocketPayMqProducer(RocketMQTemplate rocketMQTemplate, PayMqProduceMetrics produceMetrics) {
         this.rocketMQTemplate = rocketMQTemplate; // 保存模板
+        this.produceMetrics = produceMetrics; // 保存指标
     }
 
     @Override // 实现接口
@@ -36,6 +38,15 @@ public class RocketPayMqProducer implements PayMqProducer {
 
     @Override // 实现接口
     public void send(String topic, String tag, String keys, String payload) {
+        produceMetrics.record(topic, () -> doSend(topic, tag, keys, payload));
+    }
+
+    @Override // 实现接口
+    public void sendOrderly(String topic, String tag, String hashKey, String payload) {
+        produceMetrics.record(topic, () -> doSendOrderly(topic, tag, hashKey, payload));
+    }
+
+    private void doSend(String topic, String tag, String keys, String payload) {
         String destination = buildDestination(topic, tag); // topic 或 topic:tag
         SendResult result = rocketMQTemplate.syncSend(destination, MessageBuilder.withPayload(payload) // 构建消息体
                 .setHeader("KEYS", keys != null ? keys : "") // 设置 KEYS 头便于 Console 检索
@@ -43,8 +54,7 @@ public class RocketPayMqProducer implements PayMqProducer {
         assertSendOk(topic, result); // 校验 SEND_OK
     }
 
-    @Override // 实现接口
-    public void sendOrderly(String topic, String tag, String hashKey, String payload) {
+    private void doSendOrderly(String topic, String tag, String hashKey, String payload) {
         String destination = buildDestination(topic, tag); // topic 或 topic:tag
         SendResult result = rocketMQTemplate.syncSendOrderly(destination, MessageBuilder.withPayload(payload) // 有序消息体
                 .setHeader("KEYS", hashKey != null ? hashKey : "") // KEYS 与 hashKey 一致

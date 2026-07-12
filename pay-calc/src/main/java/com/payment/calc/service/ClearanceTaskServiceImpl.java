@@ -11,6 +11,7 @@ import com.payment.calc.support.ClearanceTaskPublisher; // 清算 MQ 发布器
 import com.payment.common.enums.BillStatus; // 账单状态枚举
 import com.payment.common.enums.BillType; // 账单类型枚举
 import com.payment.common.enums.TaskStatus; // 任务状态枚举
+import com.payment.common.metrics.PayBusinessMetrics; // 业务吞吐指标
 import com.payment.control.service.AlertService; // 告警服务
 import com.payment.control.service.ExceptionRecordService; // 异常工单服务
 import com.payment.domain.entity.ClearanceTaskEntity; // 清算任务实体
@@ -47,6 +48,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     private final ClearanceTaskPublisher clearanceTaskPublisher; // 清算 MQ 发布
     private final ExceptionRecordService exceptionRecordService; // 异常工单
     private final AlertService alertService; // 告警
+    private final PayBusinessMetrics businessMetrics; // 业务吞吐指标
 
     /**
      * 构造注入依赖。
@@ -59,7 +61,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
                                     PayMqProperties payMqProperties,
                                     ClearanceTaskPublisher clearanceTaskPublisher,
                                     ExceptionRecordService exceptionRecordService,
-                                    AlertService alertService) {
+                                    AlertService alertService,
+                                    PayBusinessMetrics businessMetrics) {
         this.clearanceTaskRepository = clearanceTaskRepository; // 赋值任务仓储
         this.tradeBillRepository = tradeBillRepository; // 赋值账单仓储
         this.feeCalcService = feeCalcService; // 赋值费用服务
@@ -69,6 +72,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
         this.clearanceTaskPublisher = clearanceTaskPublisher; // 赋值发布器
         this.exceptionRecordService = exceptionRecordService; // 赋值工单服务
         this.alertService = alertService; // 赋值告警服务
+        this.businessMetrics = businessMetrics; // 赋值指标
     }
 
     /**
@@ -138,6 +142,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             task.errorMsg = null; // 清空错误信息
             task.nextRetryTime = null; // 清空下次重试
             clearanceTaskRepository.save(task); // 保存任务
+            businessMetrics.recordThroughput(PayBusinessMetrics.STAGE_CLEARANCE_DONE, true);
 
             activateWaitingRefunds(billNo); // 异步激活等待原单的退款
         } catch (Exception e) { // 清算失败

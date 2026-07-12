@@ -7,6 +7,7 @@ import com.payment.api.dto.FeeCalcResultDTO; // 费用计算结果 DTO
 import com.payment.api.service.SplitService; // 分账服务接口
 import com.payment.common.enums.Direction; // 借贷方向枚举
 import com.payment.common.enums.PartyType; // 参与方类型枚举
+import com.payment.common.metrics.PayBusinessMetrics; // 业务吞吐指标
 import com.payment.domain.entity.AccountVoucherEntity; // 会计凭证实体
 import com.payment.domain.entity.OutboxMessageEntity; // 发件箱消息实体
 import com.payment.domain.entity.SplitDetailEntity; // 分账明细实体
@@ -36,6 +37,7 @@ public class SplitServiceImpl implements SplitService {
     private final AccountVoucherRepository accountVoucherRepository; // 会计凭证仓储
     private final OutboxMessageRepository outboxMessageRepository; // 发件箱消息仓储
     private final ObjectMapper objectMapper; // JSON 映射器
+    private final PayBusinessMetrics businessMetrics; // 业务吞吐指标
 
     /**
      * 构造注入依赖。
@@ -43,11 +45,13 @@ public class SplitServiceImpl implements SplitService {
     public SplitServiceImpl(SplitDetailRepository splitDetailRepository,
                             AccountVoucherRepository accountVoucherRepository,
                             OutboxMessageRepository outboxMessageRepository,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            PayBusinessMetrics businessMetrics) {
         this.splitDetailRepository = splitDetailRepository; // 赋值分账仓储
         this.accountVoucherRepository = accountVoucherRepository; // 赋值凭证仓储
         this.outboxMessageRepository = outboxMessageRepository; // 赋值发件箱仓储
         this.objectMapper = objectMapper; // 赋值 JSON 映射器
+        this.businessMetrics = businessMetrics; // 赋值指标
     }
 
     /**
@@ -77,6 +81,7 @@ public class SplitServiceImpl implements SplitService {
             outbox.createTime = LocalDateTime.now(); // 创建时间
             outboxMessageRepository.save(outbox); // 保存消息
         }
+        businessMetrics.recordSplitDone(calcResult.billNo, 0);
     }
 
     /**

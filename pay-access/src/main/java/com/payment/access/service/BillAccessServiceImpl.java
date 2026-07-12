@@ -1,5 +1,6 @@
 package com.payment.access.service; // 账单接入服务包
 
+import com.payment.common.metrics.PayBusinessMetrics;
 import com.payment.api.dto.TradeBillDTO; // 账单 DTO
 import com.payment.api.dto.ValidateResult; // 校验结果
 import com.payment.api.service.BillAccessService; // 接入服务接口
@@ -30,6 +31,7 @@ public class BillAccessServiceImpl implements BillAccessService {
     private final PayMqProperties payMqProperties; // MQ 开关
     private final ClearanceTaskPublisher clearanceTaskPublisher; // 有序发 clearance_task
     private final MqBacklogState mqBacklogState; // 积压熔断
+    private final PayBusinessMetrics businessMetrics; // 业务吞吐指标
 
     /** 构造注入 */
     public BillAccessServiceImpl(TradeBillRepository tradeBillRepository,
@@ -37,13 +39,15 @@ public class BillAccessServiceImpl implements BillAccessService {
                                  ClearanceTaskService clearanceTaskService,
                                  PayMqProperties payMqProperties,
                                  ClearanceTaskPublisher clearanceTaskPublisher,
-                                 MqBacklogState mqBacklogState) {
+                                 MqBacklogState mqBacklogState,
+                                 PayBusinessMetrics businessMetrics) {
         this.tradeBillRepository = tradeBillRepository; // 账单仓储
         this.merchantValidateService = merchantValidateService; // 校验服务
         this.clearanceTaskService = clearanceTaskService; // 清算服务
         this.payMqProperties = payMqProperties; // MQ 配置
         this.clearanceTaskPublisher = clearanceTaskPublisher; // 发布器
         this.mqBacklogState = mqBacklogState; // 熔断状态
+        this.businessMetrics = businessMetrics; // 指标
     }
 
     /**
@@ -98,6 +102,7 @@ public class BillAccessServiceImpl implements BillAccessService {
             clearanceTaskService.createTask(bill.billNo, bill.merchantId); // 建任务
             triggerClearance(bill.billNo, bill.merchantId); // 触发清算
         }
+        businessMetrics.markBillAccepted(bill.billNo, bill.billType);
         return bill; // 返回 DTO
     }
 

@@ -14,4 +14,7 @@ public interface ExceptionRecordRepository {
 
     /** 按业务键与异常码查询未关闭工单（幂等建单） */
     Optional<ExceptionRecordEntity> findOpenByBizKeyAndCode(String bizKey, String exceptionCode);
+
+    /** 未关闭工单数（status 0/1） */
+    long countOpen();
 }

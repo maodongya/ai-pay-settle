@@ -44,10 +44,33 @@ pay:
     t1-cron: "0 0 2 * * ?"
     reconcile-cron: "0 0 4 * * ?"
     payment-retry-cron: "0 30 * * * ?"
+  monitor:
+    db:
+      enabled: true
+      check-interval-ms: 300000
+    tps:
+      enabled: true
+      check-interval-ms: 60000
+      gap-warn: 30
+      gap-critical: 100
+      drop-ratio-warn: 0.3
+      drop-ratio-critical: 0.5
 
 logging:
   level:
     com.payment: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: pay-settle
 
 ---
 # pay.db.init.enabled=false 时跳过 SQL 初始化（适用于已有数据的 MySQL 环境）
