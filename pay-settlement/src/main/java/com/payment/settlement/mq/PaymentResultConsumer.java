@@ -51,7 +51,7 @@ public class PaymentResultConsumer implements MqMessageHandler {
             topic = MqTopics.PAYMENT_RESULT, // Topic
             consumerGroup = MqConsumerGroups.SETTLEMENT + "-payment", // 独立 Group
             consumeMode = ConsumeMode.CONCURRENTLY, // 并发
-            consumeThreadMax = 16) // settlement-payment-thread-max
+            consumeThreadMax = 20) // RocketMQ 默认 min=20，max 须 >= 20
     public static class RocketListener implements RocketMQListener<String> {
 
         private final PaymentResultConsumer delegate; // Handler

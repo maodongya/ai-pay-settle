@@ -2,6 +2,7 @@ package com.payment.mq.support; // MQ 消费异常分类器包
 
 import com.payment.common.exception.BizException; // 业务异常，携带错误码
 import com.payment.common.exception.ErrorCode; // 统一错误码枚举
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException; // JSON 未知字段
 import com.payment.mq.exception.NonRetryableException; // 不可 MQ 重试标记异常
 import org.springframework.dao.CannotAcquireLockException; // 数据库锁等待异常
 import org.springframework.dao.RecoverableDataAccessException; // 可恢复的数据访问异常
@@ -37,6 +38,9 @@ public class MqConsumeExceptionClassifier {
         Throwable root = unwrap(e); // 解包到根因异常
         if (root instanceof NonRetryableException) { // 显式标记不可重试
             return MqConsumeAction.DLQ; // 进入 DLQ 人工处理
+        }
+        if (root instanceof UnrecognizedPropertyException) { // JSON 字段与 DTO 不匹配
+            return MqConsumeAction.DLQ; // 脏消息不重试，避免 RETRY 队列堆积
         }
         if (root instanceof BizException be) { // 业务异常按错误码分流
             return classifyBiz(be); // 根据业务码决策

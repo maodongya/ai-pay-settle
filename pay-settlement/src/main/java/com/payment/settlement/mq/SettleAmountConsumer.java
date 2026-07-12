@@ -60,7 +60,7 @@ public class SettleAmountConsumer implements MqMessageHandler {
             topic = MqTopics.SETTLE_AMOUNT, // Topic
             consumerGroup = MqConsumerGroups.SETTLEMENT, // settlement group
             consumeMode = ConsumeMode.ORDERLY, // 有序消费（配合 sendOrderly hashKey=merchantId）
-            consumeThreadMax = 16) // 与 settlement-thread-max 同步
+            consumeThreadMax = 20) // RocketMQ 默认 consumeThreadMin=20，max 须 >= 20
     public static class RocketListener implements RocketMQListener<String> {
 
         private final SettleAmountConsumer delegate; // Handler
