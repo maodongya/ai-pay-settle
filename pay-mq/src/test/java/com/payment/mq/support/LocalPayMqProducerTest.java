@@ -36,6 +36,29 @@ class LocalPayMqProducerTest {
         assertEquals(1, counter.get());
     }
 
+    @Test
+    void shouldSerializeOrderlyByHashKey() {
+        AtomicInteger concurrent = new AtomicInteger();
+        MqMessageHandler handler = new MqMessageHandler() {
+            @Override
+            public String topic() {
+                return MqTopics.SETTLE_AMOUNT;
+            }
+
+            @Override
+            public void handle(String payload) {
+                concurrent.incrementAndGet();
+            }
+        };
+        LocalMqHandlerRegistry registry = new LocalMqHandlerRegistry(fixedProvider(List.of(handler)));
+        LocalPayMqProducer producer = new LocalPayMqProducer(registry);
+
+        producer.sendOrderly(MqTopics.SETTLE_AMOUNT, null, "m1", "{\"a\":1}");
+        producer.sendOrderly(MqTopics.SETTLE_AMOUNT, null, "m1", "{\"a\":2}");
+
+        assertEquals(2, concurrent.get());
+    }
+
     private static ObjectProvider<List<MqMessageHandler>> fixedProvider(List<MqMessageHandler> handlers) {
         return new ObjectProvider<>() {
             @Override

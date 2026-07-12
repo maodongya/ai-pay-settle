@@ -22,4 +22,10 @@ public interface ClearanceTaskRepository {
     List<ClearanceTaskEntity> findByStatusAndRetryCountLessThan(Integer status, Integer maxRetry);
 
     List<ClearanceTaskEntity> findByStatusAndUpdateTimeBefore(Integer status, LocalDateTime before);
+
+    /** 统计指定状态任务数（积压监控） */
+    long countByStatus(Integer status);
+
+    /** 查询到达 next_retry_time 且未达最大重试次数的 FAILED 任务 */
+    List<ClearanceTaskEntity> findFailedReadyForRetry(Integer status, Integer maxRetry, LocalDateTime now);
 }

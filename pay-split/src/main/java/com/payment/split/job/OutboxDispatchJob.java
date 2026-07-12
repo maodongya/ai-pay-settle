@@ -1,53 +1,85 @@
-package com.payment.split.job;
+package com.payment.split.job; // 分账/Outbox 定时任务包
 
-import com.payment.domain.entity.OutboxMessageEntity;
-import com.payment.domain.repository.OutboxMessageRepository;
-import com.payment.mq.MqTags;
-import com.payment.mq.PayMqProducer;
-import com.payment.mq.config.PayMqProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import com.fasterxml.jackson.databind.JsonNode; // 解析 Outbox JSON
+import com.fasterxml.jackson.databind.ObjectMapper; // JSON 工具
+import com.payment.control.service.AlertService; // 告警
+import com.payment.domain.entity.OutboxMessageEntity; // Outbox 实体
+import com.payment.domain.repository.OutboxMessageRepository; // Outbox 仓储
+import com.payment.mq.MqTags; // CREDIT Tag
+import com.payment.mq.PayMqProducer; // 生产者
+import com.payment.mq.config.PayMqProperties; // MQ 开关
+import org.slf4j.Logger; // 日志
+import org.slf4j.LoggerFactory; // 日志工厂
+import org.springframework.beans.factory.annotation.Value; // 注入 batch 配置
+import org.springframework.scheduling.annotation.Scheduled; // 定时
+import org.springframework.stereotype.Component; // 组件
+import org.springframework.transaction.annotation.Transactional; // 事务
 
-import java.util.List;
+import java.util.List; // 列表
 
 /**
- * 发件箱消息派发：经 MQ 投递 settle_amount_topic（Local 模式同步消费）。
+ * 发件箱消息派发：经 MQ 有序投递 settle_amount_topic（同 merchant 串行入账）。
  */
-@Component
+@Component // Spring 组件
 public class OutboxDispatchJob {
 
-    private static final Logger log = LoggerFactory.getLogger(OutboxDispatchJob.class);
+    private static final Logger log = LoggerFactory.getLogger(OutboxDispatchJob.class); // 日志
 
-    private final OutboxMessageRepository outboxMessageRepository;
-    private final PayMqProducer payMqProducer;
-    private final PayMqProperties payMqProperties;
+    private final OutboxMessageRepository outboxMessageRepository; // Outbox 仓储
+    private final PayMqProducer payMqProducer; // MQ 生产者
+    private final PayMqProperties payMqProperties; // MQ 配置
+    private final ObjectMapper objectMapper; // 解析 merchantId
+    private final AlertService alertService; // 失败告警
+    private final int batchSize; // 每批条数
 
+    /** 构造注入 */
     public OutboxDispatchJob(OutboxMessageRepository outboxMessageRepository,
-                               PayMqProducer payMqProducer,
-                               PayMqProperties payMqProperties) {
-        this.outboxMessageRepository = outboxMessageRepository;
-        this.payMqProducer = payMqProducer;
-        this.payMqProperties = payMqProperties;
+                             PayMqProducer payMqProducer,
+                             PayMqProperties payMqProperties,
+                             ObjectMapper objectMapper,
+                             AlertService alertService,
+                             @Value("${pay.outbox.dispatch-batch-size:200}") int batchSize) {
+        this.outboxMessageRepository = outboxMessageRepository; // 仓储
+        this.payMqProducer = payMqProducer; // 生产者
+        this.payMqProperties = payMqProperties; // 配置
+        this.objectMapper = objectMapper; // JSON
+        this.alertService = alertService; // 告警
+        this.batchSize = batchSize; // 批量大小
     }
 
-    @Scheduled(fixedDelayString = "${pay.outbox.dispatch-interval-ms:5000}")
-    @Transactional
+    /** 定时扫描 pending Outbox 并 sendOrderly */
+    @Scheduled(fixedDelayString = "${pay.outbox.dispatch-interval-ms:5000}") // 默认 5s，mq profile 可改 1s
+    @Transactional // 更新 status 与 DB 一致
     public void dispatch() {
-        if (!payMqProperties.isOutboxViaMq()) {
-            return;
+        if (!payMqProperties.isOutboxViaMq()) { // 未走 MQ
+            return; // 跳过
         }
-        List<OutboxMessageEntity> pending = outboxMessageRepository.findTop100ByStatusOrderByCreateTimeAsc(0);
-        for (OutboxMessageEntity msg : pending) {
-            try {
-                payMqProducer.send(msg.topic, MqTags.CREDIT, msg.bizKey, msg.payload);
-                msg.status = 1;
-                outboxMessageRepository.save(msg);
-            } catch (Exception e) {
-                log.warn("outbox dispatch failed id={}", msg.id, e);
+        List<OutboxMessageEntity> pending = outboxMessageRepository // 批量拉取
+                .findTopNByStatusOrderByCreateTimeAsc(0, batchSize);
+        int failCount = 0; // 本批失败计数
+        for (OutboxMessageEntity msg : pending) { // 逐条发送
+            try { // 发送
+                String hashKey = resolveMerchantId(msg.payload); // 从 payload 取 merchantId 作为 hashKey
+                payMqProducer.sendOrderly(msg.topic, MqTags.CREDIT, hashKey, msg.payload); // 有序发送
+                msg.status = 1; // 已发送
+                outboxMessageRepository.save(msg); // 更新状态
+            } catch (Exception e) { // 发送失败
+                failCount++; // 失败 +1
+                log.warn("outbox dispatch failed id={}", msg.id, e); // 警告日志
             }
         }
+        if (failCount > 0) { // 存在失败
+            alertService.send(AlertService.MQ_BACKLOG, AlertService.LEVEL_WARN, // 预警
+                    "outbox dispatch batch failures=" + failCount); // 内容
+        }
+    }
+
+    /** 从 settle_amount JSON 载荷解析 merchantId */
+    private String resolveMerchantId(String payload) throws Exception {
+        JsonNode node = objectMapper.readTree(payload); // 解析 JSON
+        if (node.has("merchantId")) { // 标准字段
+            return node.get("merchantId").asText(); // 返回字符串形式 merchantId
+        }
+        return node.has("billNo") ? node.get("billNo").asText() : "0"; // 兜底 billNo
     }
 }

@@ -58,4 +58,19 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
                 .eq("status", status)
                 .lt("update_time", before));
     }
+
+    @Override
+    public long countByStatus(Integer status) {
+        return clearanceTaskMapper.selectCount(new QueryWrapper<ClearanceTaskEntity>()
+                .eq("status", status));
+    }
+
+    @Override
+    public List<ClearanceTaskEntity> findFailedReadyForRetry(Integer status, Integer maxRetry, LocalDateTime now) {
+        return clearanceTaskMapper.selectList(new QueryWrapper<ClearanceTaskEntity>()
+                .eq("status", status)
+                .lt("retry_count", maxRetry)
+                .and(w -> w.isNull("next_retry_time").or().le("next_retry_time", now))
+                .orderByAsc("create_time"));
+    }
 }

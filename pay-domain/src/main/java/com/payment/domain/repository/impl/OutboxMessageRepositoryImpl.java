@@ -25,9 +25,26 @@ public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
 
     @Override
     public List<OutboxMessageEntity> findTop100ByStatusOrderByCreateTimeAsc(Integer status) {
+        return findTopNByStatusOrderByCreateTimeAsc(status, 100);
+    }
+
+    @Override
+    public List<OutboxMessageEntity> findTopNByStatusOrderByCreateTimeAsc(Integer status, int limit) {
         return outboxMessageMapper.selectList(new QueryWrapper<OutboxMessageEntity>()
                 .eq("status", status)
                 .orderByAsc("create_time")
-                .last("LIMIT 100"));
+                .last("LIMIT " + limit));
+    }
+
+    @Override
+    public long countByStatus(Integer status) {
+        return outboxMessageMapper.selectCount(new QueryWrapper<OutboxMessageEntity>()
+                .eq("status", status));
+    }
+
+    @Override
+    public boolean existsByBizKey(String bizKey) {
+        return outboxMessageMapper.selectCount(new QueryWrapper<OutboxMessageEntity>()
+                .eq("biz_key", bizKey)) > 0;
     }
 }

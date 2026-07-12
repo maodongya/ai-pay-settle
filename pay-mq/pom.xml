@@ -25,6 +25,18 @@
             <version>2.3.1</version>
         </dependency>
         <dependency>
+            <groupId>com.payment</groupId>
+            <artifactId>pay-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.payment</groupId>
+            <artifactId>pay-control</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>

@@ -55,8 +55,8 @@ public class MockPaymentChannel {
     private void deliverCallback(PaymentCallbackDTO callback) {
         if (payMqProperties.isPaymentCallbackViaMq()) {
             try {
-                payMqProducer.send(MqTopics.PAYMENT_RESULT, MqTags.CALLBACK, callback.settleNo,
-                        objectMapper.writeValueAsString(callback));
+                payMqProducer.sendOrderly(MqTopics.PAYMENT_RESULT, MqTags.CALLBACK, callback.settleNo, // 按 settleNo 有序
+                        objectMapper.writeValueAsString(callback)); // JSON 载荷
             } catch (JsonProcessingException e) {
                 throw new IllegalStateException(e);
             }

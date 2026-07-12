@@ -1,57 +1,71 @@
-package com.payment.settlement.mq;
+package com.payment.settlement.mq; // 支付结果 Consumer
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.payment.api.dto.PaymentCallbackDTO;
-import com.payment.api.service.SettleAccountService;
-import com.payment.mq.MqConsumerGroups;
-import com.payment.mq.MqMessageHandler;
-import com.payment.mq.MqTopics;
-import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
-import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.stereotype.Component;
+import com.fasterxml.jackson.databind.ObjectMapper; // JSON
+import com.payment.api.dto.PaymentCallbackDTO; // 回调 DTO
+import com.payment.api.service.SettleAccountService; // 结算服务
+import com.payment.mq.MqConsumerGroups; // Group
+import com.payment.mq.MqMessageHandler; // Handler
+import com.payment.mq.MqTopics; // Topic
+import com.payment.mq.support.MqListenerInvoker; // Invoker
+import org.apache.rocketmq.spring.annotation.ConsumeMode; // 模式
+import org.apache.rocketmq.spring.annotation.RocketMQMessageListener; // 注解
+import org.apache.rocketmq.spring.core.RocketMQListener; // 接口
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty; // 条件
+import org.springframework.context.annotation.Lazy; // 延迟
+import org.springframework.stereotype.Component; // 组件
 
-@Component
+/**
+ * payment_result_topic 消费者：处理渠道打款回调。
+ */
+@Component // Handler
 public class PaymentResultConsumer implements MqMessageHandler {
 
-    private final SettleAccountService settleAccountService;
-    private final ObjectMapper objectMapper;
+    private final SettleAccountService settleAccountService; // 结算
+    private final ObjectMapper objectMapper; // JSON
 
+    /** 构造 */
     public PaymentResultConsumer(@Lazy SettleAccountService settleAccountService, ObjectMapper objectMapper) {
-        this.settleAccountService = settleAccountService;
-        this.objectMapper = objectMapper;
+        this.settleAccountService = settleAccountService; // 结算
+        this.objectMapper = objectMapper; // JSON
     }
 
-    @Override
+    @Override // Topic
     public String topic() {
-        return MqTopics.PAYMENT_RESULT;
+        return MqTopics.PAYMENT_RESULT; // payment result
     }
 
-    @Override
+    @Override // 处理回调
     public void handle(String payload) {
-        try {
-            PaymentCallbackDTO callback = objectMapper.readValue(payload, PaymentCallbackDTO.class);
-            settleAccountService.handlePaymentCallback(callback);
-        } catch (Exception e) {
-            throw new IllegalStateException("payment result consume failed", e);
+        try { // 反序列化
+            PaymentCallbackDTO callback = objectMapper.readValue(payload, PaymentCallbackDTO.class); // DTO
+            settleAccountService.handlePaymentCallback(callback); // 更新结算单
+        } catch (Exception e) { // 失败
+            throw new IllegalStateException("payment result consume failed", e); // 抛出
         }
     }
 
-    @Component
-    @ConditionalOnProperty(name = "pay.mq.enabled", havingValue = "true")
-    @RocketMQMessageListener(topic = MqTopics.PAYMENT_RESULT, consumerGroup = MqConsumerGroups.SETTLEMENT + "-payment")
+    /** RocketMQ Listener */
+    @Component // Listener
+    @ConditionalOnProperty(name = "pay.mq.enabled", havingValue = "true") // MQ
+    @RocketMQMessageListener( // 注解
+            topic = MqTopics.PAYMENT_RESULT, // Topic
+            consumerGroup = MqConsumerGroups.SETTLEMENT + "-payment", // 独立 Group
+            consumeMode = ConsumeMode.CONCURRENTLY, // 并发
+            consumeThreadMax = 16) // settlement-payment-thread-max
     public static class RocketListener implements RocketMQListener<String> {
 
-        private final PaymentResultConsumer delegate;
+        private final PaymentResultConsumer delegate; // Handler
+        private final MqListenerInvoker invoker; // Invoker
 
-        public RocketListener(PaymentResultConsumer delegate) {
-            this.delegate = delegate;
+        /** 构造 */
+        public RocketListener(PaymentResultConsumer delegate, MqListenerInvoker invoker) {
+            this.delegate = delegate; // Handler
+            this.invoker = invoker; // Invoker
         }
 
-        @Override
+        @Override // 回调
         public void onMessage(String message) {
-            delegate.handle(message);
+            invoker.invoke(MqTopics.PAYMENT_RESULT, () -> delegate.handle(message)); // wrap
         }
     }
 }

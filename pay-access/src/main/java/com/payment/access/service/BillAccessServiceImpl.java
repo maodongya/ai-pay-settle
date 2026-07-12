@@ -1,27 +1,22 @@
-package com.payment.access.service;
+package com.payment.access.service; // 账单接入服务包
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.payment.api.dto.TradeBillDTO;
-import com.payment.api.dto.ValidateResult;
-import com.payment.api.service.BillAccessService;
-import com.payment.api.service.ClearanceTaskService;
-import com.payment.api.service.MerchantValidateService;
-import com.payment.common.enums.BillStatus;
-import com.payment.common.enums.BillType;
-import com.payment.common.exception.BizException;
-import com.payment.domain.entity.TradeBillEntity;
-import com.payment.domain.repository.TradeBillRepository;
-import com.payment.mq.MqTags;
-import com.payment.mq.MqTopics;
-import com.payment.mq.PayMqProducer;
-import com.payment.mq.config.PayMqProperties;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import com.payment.api.dto.TradeBillDTO; // 账单 DTO
+import com.payment.api.dto.ValidateResult; // 校验结果
+import com.payment.api.service.BillAccessService; // 接入服务接口
+import com.payment.api.service.ClearanceTaskService; // 清算任务服务
+import com.payment.api.service.MerchantValidateService; // 商户校验
+import com.payment.calc.support.ClearanceTaskPublisher; // 清算 MQ 发布（同模块经 pay-calc 传递）
+import com.payment.common.enums.BillStatus; // 账单状态
+import com.payment.common.enums.BillType; // 账单类型
+import com.payment.common.exception.BizException; // 业务异常
+import com.payment.domain.entity.TradeBillEntity; // 账单实体
+import com.payment.domain.repository.TradeBillRepository; // 账单仓储
+import com.payment.mq.config.PayMqProperties; // MQ 配置
+import com.payment.mq.support.MqBacklogState; // 积压熔断状态
+import org.springframework.stereotype.Service; // 服务注解
+import org.springframework.transaction.annotation.Transactional; // 事务
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDateTime; // 时间
 
 /**
  * 账单接入服务实现，接收交易账单并触发清算流程。
@@ -29,119 +24,108 @@ import java.util.Map;
 @Service // 注册为 Spring 服务
 public class BillAccessServiceImpl implements BillAccessService {
 
-    private final TradeBillRepository tradeBillRepository;
-    private final MerchantValidateService merchantValidateService;
-    private final ClearanceTaskService clearanceTaskService;
-    private final PayMqProducer payMqProducer;
-    private final PayMqProperties payMqProperties;
-    private final ObjectMapper objectMapper;
+    private final TradeBillRepository tradeBillRepository; // 账单仓储
+    private final MerchantValidateService merchantValidateService; // 商户校验
+    private final ClearanceTaskService clearanceTaskService; // 清算任务
+    private final PayMqProperties payMqProperties; // MQ 开关
+    private final ClearanceTaskPublisher clearanceTaskPublisher; // 有序发 clearance_task
+    private final MqBacklogState mqBacklogState; // 积压熔断
 
+    /** 构造注入 */
     public BillAccessServiceImpl(TradeBillRepository tradeBillRepository,
                                  MerchantValidateService merchantValidateService,
                                  ClearanceTaskService clearanceTaskService,
-                                 PayMqProducer payMqProducer,
                                  PayMqProperties payMqProperties,
-                                 ObjectMapper objectMapper) {
-        this.tradeBillRepository = tradeBillRepository;
-        this.merchantValidateService = merchantValidateService;
-        this.clearanceTaskService = clearanceTaskService;
-        this.payMqProducer = payMqProducer;
-        this.payMqProperties = payMqProperties;
-        this.objectMapper = objectMapper;
+                                 ClearanceTaskPublisher clearanceTaskPublisher,
+                                 MqBacklogState mqBacklogState) {
+        this.tradeBillRepository = tradeBillRepository; // 账单仓储
+        this.merchantValidateService = merchantValidateService; // 校验服务
+        this.clearanceTaskService = clearanceTaskService; // 清算服务
+        this.payMqProperties = payMqProperties; // MQ 配置
+        this.clearanceTaskPublisher = clearanceTaskPublisher; // 发布器
+        this.mqBacklogState = mqBacklogState; // 熔断状态
     }
 
     /**
      * 提交交易账单，已存在则幂等返回。
      */
-    @Override // 实现接口方法
-    @Transactional // 开启事务
+    @Override // 实现接口
+    @Transactional // 事务
     public TradeBillDTO submitBill(TradeBillDTO bill) {
-        return tradeBillRepository.findByBillNo(bill.billNo) // 按账单号查询
-                .map(this::toDto) // 存在则转为 DTO
-                .orElseGet(() -> createBill(bill)); // 不存在则创建
+        if (mqBacklogState.isCircuitOpen() && payMqProperties.isEnabled()) { // 积压熔断打开
+            throw new BizException(503, "service overloaded, retry later: " + mqBacklogState.getLastSummary()); // HTTP 503 语义
+        }
+        return tradeBillRepository.findByBillNo(bill.billNo) // 幂等查询
+                .map(this::toDto) // 已存在
+                .orElseGet(() -> createBill(bill)); // 新建
     }
 
-    /**
-     * 创建新账单并触发清算。
-     */
+    /** 创建账单并触发清算 */
     private TradeBillDTO createBill(TradeBillDTO bill) {
-
-        ValidateResult validation = merchantValidateService.validateBill(bill); // 校验账单
-        if (!validation.valid) { // 校验失败
-            throw new BizException(validation.errorCode, validation.message); // 抛出业务异常
+        ValidateResult validation = merchantValidateService.validateBill(bill); // 校验
+        if (!validation.valid) { // 失败
+            throw new BizException(validation.errorCode, validation.message); // 业务异常
         }
 
-        int status = BillStatus.PENDING.getCode(); // 默认待处理状态
-        if (bill.billType == BillType.REFUND.getCode()) { // 退款单
-            TradeBillEntity origin = tradeBillRepository.findByBillNo(bill.originBillNo).orElseThrow(); // 查询原单
+        int status = BillStatus.PENDING.getCode(); // 默认待处理
+        if (bill.billType == BillType.REFUND.getCode()) { // 退款
+            TradeBillEntity origin = tradeBillRepository.findByBillNo(bill.originBillNo).orElseThrow(); // 原单
             if (origin.status != BillStatus.CLEARED.getCode()) { // 原单未清算
                 status = BillStatus.WAIT_ORIGIN.getCode(); // 等待原单
             }
         }
 
-        TradeBillEntity entity = new TradeBillEntity(); // 创建账单实体
+        TradeBillEntity entity = new TradeBillEntity(); // 实体
         entity.billNo = bill.billNo; // 账单号
-        entity.billType = bill.billType; // 账单类型
+        entity.billType = bill.billType; // 类型
         entity.businessLine = bill.businessLine; // 业务线
         entity.category = bill.category; // 品类
         entity.serviceItem = bill.serviceItem; // 服务项目
-        entity.merchantId = bill.merchantId; // 商户 ID
-        entity.agentId = bill.agentId; // 一级代理 ID
-        entity.secondAgentId = bill.secondAgentId; // 二级代理 ID
+        entity.merchantId = bill.merchantId; // 商户
+        entity.agentId = bill.agentId; // 代理
+        entity.secondAgentId = bill.secondAgentId; // 二级代理
         entity.orderNo = bill.orderNo; // 订单号
         entity.originBillNo = bill.originBillNo; // 原单号
-        entity.tradeAmount = bill.tradeAmount; // 交易金额
-        entity.cityCode = bill.cityCode; // 城市编码
-        entity.payChannel = bill.payChannel; // 支付渠道
-        entity.status = status; // 账单状态
+        entity.tradeAmount = bill.tradeAmount; // 金额
+        entity.cityCode = bill.cityCode; // 城市
+        entity.payChannel = bill.payChannel; // 渠道
+        entity.status = status; // 状态
         entity.createTime = LocalDateTime.now(); // 创建时间
         entity.updateTime = LocalDateTime.now(); // 更新时间
-        tradeBillRepository.save(entity); // 保存账单
+        tradeBillRepository.save(entity); // 落库
 
-        if (status == BillStatus.PENDING.getCode()) {
-            clearanceTaskService.createTask(bill.billNo, bill.merchantId);
-            triggerClearance(bill.billNo, bill.merchantId);
+        if (status == BillStatus.PENDING.getCode()) { // 可立即清算
+            clearanceTaskService.createTask(bill.billNo, bill.merchantId); // 建任务
+            triggerClearance(bill.billNo, bill.merchantId); // 触发清算
         }
-
-        return bill;
+        return bill; // 返回 DTO
     }
 
+    /** 触发清算：MQ 模式 sendOrderly，否则 sync executeTask */
     private void triggerClearance(String billNo, Long merchantId) {
-        if (payMqProperties.isClearanceViaMq()) {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("version", "1.0");
-            payload.put("billNo", billNo);
-            payload.put("merchantId", merchantId);
-            payload.put("shardId", (int) (merchantId % 16));
-            payload.put("createTime", LocalDateTime.now().toString());
-            try {
-                payMqProducer.send(MqTopics.CLEARANCE_TASK, MqTags.TASK, billNo, objectMapper.writeValueAsString(payload));
-            } catch (JsonProcessingException e) {
-                throw new IllegalStateException(e);
-            }
-        } else {
-            clearanceTaskService.executeTask(billNo);
+        if (payMqProperties.isClearanceViaMq()) { // MQ 流水线
+            clearanceTaskPublisher.publish(billNo, merchantId); // 有序发 clearance_task
+        } else { // 本地同步
+            clearanceTaskService.executeTask(billNo); // 直接执行
         }
     }
 
-    /**
-     * 将账单实体转换为 DTO。
-     */
+    /** Entity → DTO */
     private TradeBillDTO toDto(TradeBillEntity entity) {
-        TradeBillDTO dto = new TradeBillDTO(); // 创建 DTO
+        TradeBillDTO dto = new TradeBillDTO(); // DTO
         dto.billNo = entity.billNo; // 账单号
-        dto.billType = entity.billType; // 账单类型
+        dto.billType = entity.billType; // 类型
         dto.businessLine = entity.businessLine; // 业务线
         dto.category = entity.category; // 品类
         dto.serviceItem = entity.serviceItem; // 服务项目
-        dto.merchantId = entity.merchantId; // 商户 ID
-        dto.agentId = entity.agentId; // 一级代理 ID
-        dto.secondAgentId = entity.secondAgentId; // 二级代理 ID
+        dto.merchantId = entity.merchantId; // 商户
+        dto.agentId = entity.agentId; // 代理
+        dto.secondAgentId = entity.secondAgentId; // 二级代理
         dto.orderNo = entity.orderNo; // 订单号
-        dto.originBillNo = entity.originBillNo; // 原单号
-        dto.tradeAmount = entity.tradeAmount; // 交易金额
-        dto.cityCode = entity.cityCode; // 城市编码
-        dto.payChannel = entity.payChannel; // 支付渠道
-        return dto; // 返回 DTO
+        dto.originBillNo = entity.originBillNo; // 原单
+        dto.tradeAmount = entity.tradeAmount; // 金额
+        dto.cityCode = entity.cityCode; // 城市
+        dto.payChannel = entity.payChannel; // 渠道
+        return dto; // 返回
     }
 }

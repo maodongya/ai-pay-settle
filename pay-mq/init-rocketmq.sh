@@ -53,13 +53,22 @@ done
 docker logs rmq-broker 2>&1 | tail -3
 
 MQADMIN="/home/rocketmq/rocketmq-4.9.6/bin/mqadmin"
-echo ">>> 预创建 Topic ..."
+# Queue 数 = 16，与 clearance_task.shardId = merchantId % 16 及 sendOrderly hashKey 对齐
+QUEUE_COUNT=16
+echo ">>> 预创建 Topic（读写队列各 ${QUEUE_COUNT}）..."
 for topic in "${TOPICS[@]}"; do
   docker exec rmq-broker sh -c \
-    "$MQADMIN updateTopic -n $NAMESRV_ADDR -t $topic -c $CLUSTER" \
-    && echo "  created: $topic" \
+    "$MQADMIN updateTopic -n $NAMESRV_ADDR -t $topic -c $CLUSTER -r $QUEUE_COUNT -w $QUEUE_COUNT" \
+    && echo "  created: $topic (queue=$QUEUE_COUNT)" \
     || echo "  warn: $topic may already exist"
 done
+
+# RocketMQ 4.x DLQ Topic 通常随消费失败自动创建；以下为监控说明（Group → DLQ Topic）
+echo ">>> DLQ 监控说明（需 Dashboard / mqadmin 查询 %DLQ%<consumerGroup>）"
+echo "  %DLQ%pay-access-consumer"
+echo "  %DLQ%pay-calc-consumer"
+echo "  %DLQ%pay-settlement-consumer"
+echo "  %DLQ%pay-settlement-consumer-payment"
 
 echo ""
 echo ">>> 完成"

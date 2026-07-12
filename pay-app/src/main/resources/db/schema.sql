@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS clearance_task (
   status TINYINT NOT NULL DEFAULT 0 COMMENT '任务状态：0待执行 1执行中 2成功 3失败 4死信',
   retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
   error_msg VARCHAR(512) COMMENT '失败原因',
+  next_retry_time TIMESTAMP COMMENT '下次业务重试时间',
   create_time TIMESTAMP NOT NULL COMMENT '创建时间',
   update_time TIMESTAMP NOT NULL COMMENT '更新时间'
 ) COMMENT='清算任务';
@@ -212,3 +213,23 @@ CREATE TABLE IF NOT EXISTS alert_record (
   status TINYINT NOT NULL DEFAULT 0 COMMENT '处理状态：0未处理 1已处理',
   create_time TIMESTAMP NOT NULL COMMENT '创建时间'
 ) COMMENT='告警记录';
+
+-- 异常工单（清算 DEAD / DLQ 等）
+CREATE TABLE IF NOT EXISTS exception_record (
+  exception_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '工单ID',
+  exception_no VARCHAR(32) NOT NULL UNIQUE COMMENT '工单号',
+  exception_code VARCHAR(16) NOT NULL COMMENT '异常编码',
+  severity TINYINT NOT NULL COMMENT '严重级别',
+  biz_domain VARCHAR(16) NOT NULL COMMENT '业务域',
+  biz_key VARCHAR(64) NOT NULL COMMENT '业务键',
+  title VARCHAR(128) NOT NULL COMMENT '标题',
+  detail VARCHAR(1024) COMMENT '详情',
+  status TINYINT NOT NULL DEFAULT 0 COMMENT '0待处理 1处理中 2已解决 3已忽略',
+  create_time TIMESTAMP NOT NULL COMMENT '创建时间'
+) COMMENT='异常工单';
+
+-- 性能优化索引（MQ 消费与重试）
+CREATE INDEX IF NOT EXISTS idx_clearance_status_shard ON clearance_task (status, shard_id);
+CREATE INDEX IF NOT EXISTS idx_clearance_next_retry ON clearance_task (status, next_retry_time);
+CREATE INDEX IF NOT EXISTS idx_outbox_status_time ON outbox_message (status, create_time);
+CREATE INDEX IF NOT EXISTS idx_account_flow_merchant_time ON account_flow (merchant_id, create_time);

@@ -42,6 +42,10 @@ public class ClearanceTaskEntity {
     @TableField("error_msg") // 可选，最大长度 512
     public String errorMsg;
 
+    /** 下次业务重试时间（ClearanceRetryJob 指数退避） */
+    @TableField("next_retry_time") // 列 next_retry_time
+    public LocalDateTime nextRetryTime;
+
     /** 创建时间 */
     @TableField(value = "create_time", fill = FieldFill.INSERT) // 非空，列名 create_time
     public LocalDateTime createTime;

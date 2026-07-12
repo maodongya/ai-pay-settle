@@ -1,9 +1,43 @@
 # RocketMQ 联调/压测 Profile（配合 --spring.profiles.active=mysql,mq 或 h2,mq）
 pay:
   mq:
-    enabled: true
+    enabled: ${PAY_MQ_ENABLED:true}
     name-server: 127.0.0.1:9877
     producer-group: pay-settle-producer
+    clearance-via-mq: ${PAY_MQ_CLEARANCE:true}
+    outbox-via-mq: ${PAY_MQ_OUTBOX:true}
+    payment-callback-via-mq: true
+    consumer:
+      access-thread-max: 32
+      calc-thread-max: 32
+      settlement-thread-max: 16
+      settlement-payment-thread-max: 16
+      consume-timeout-minutes: 15
+      pull-batch-size: 32
+      roles: all
+    backlog:
+      check-interval-ms: 60000
+      lag-warn: 1000
+      lag-critical: 10000
+      outbox-pending-warn: 1000
+      outbox-pending-critical: 5000
+      clearance-pending-warn: 500
+      circuit-enabled: true
+    dlq:
+      inspect-cron: "0 */10 * * * ?"
+  outbox:
+    dispatch-interval-ms: 1000
+    dispatch-batch-size: 200
+  compensate:
+    outbox-interval-ms: 600000
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 3000
+      max-lifetime: 1800000
 
 rocketmq:
   name-server: 127.0.0.1:9877
@@ -11,3 +45,14 @@ rocketmq:
     group: pay-settle-producer
     send-message-timeout: 10000
     retry-times-when-send-failed: 2
+  consumer:
+    pull-batch-size: 32
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
