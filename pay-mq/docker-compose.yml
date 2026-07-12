@@ -1,0 +1,49 @@
+# RocketMQ 4.9.6 + Dashboard（适配 pay-settle 本地联调）
+# 启动: docker compose -f pay-mq/docker-compose.yml up -d
+# Dashboard: http://127.0.0.1:8081  默认账号 admin / admin（部分版本无鉴权）
+
+services:
+  namesrv:
+    image: apache/rocketmq:4.9.6
+    container_name: rmq-namesrv
+    ports:
+      - "9877:9876"
+    command: sh mqnamesrv
+    networks:
+      - rocketmq
+
+  broker:
+    image: apache/rocketmq:4.9.6
+    container_name: rmq-broker
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    volumes:
+      - ./broker-runtime.conf:/home/rocketmq/rocketmq-4.9.6/conf/broker-runtime.conf:ro
+    command: sh mqbroker -n namesrv:9876 -c /home/rocketmq/rocketmq-4.9.6/conf/broker-runtime.conf
+    depends_on:
+      - namesrv
+    networks:
+      - rocketmq
+
+  dashboard:
+    # 4.9.x Broker 请用 1.0.0，不要用 latest（5.x Dashboard 查 Consumer 易报错）
+    image: apacherocketmq/rocketmq-dashboard:1.0.0
+    container_name: rmq-dashboard
+    ports:
+      - "8081:8080"
+    environment:
+      # Dashboard 1.0.0 配置项是 namesrvAddr（单数），不是 namesrvAddrs
+      JAVA_OPTS: >-
+        -Drocketmq.config.namesrvAddr=namesrv:9876
+        -Drocketmq.config.isVIPChannel=false
+        -Drocketmq.config.loginRequired=false
+    depends_on:
+      - namesrv
+      - broker
+    networks:
+      - rocketmq
+
+networks:
+  rocketmq:
+    driver: bridge

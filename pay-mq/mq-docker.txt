@@ -1,0 +1,123 @@
+Docker 单机部署 RocketMQ（NameServer + Broker + 可视化控制台）
+适配 Mac Docker，一键启动，分 3 组件：
+namesrv 名称服务
+broker 消息存储服务
+rocketmq-dashboard 可视化管理面板
+一、提前说明端口规划
+NameServer：9876
+Broker：10909、10911
+控制台面板：8081
+二、1. 启动 NameServer
+bash
+运行
+docker run -d \
+--name rocketmq-namesrv \
+-p 9876:9876 \
+-v ~/docker/rocketmq/namesrv:/root/store \
+-e "MAX_POSSIBLE_HEAP=128m" \
+apache/rocketmq:4.9.6 sh mqnamesrv
+三、2. 启动 Broker（关键配置绑定宿主机 IP）
+重要坑：Mac Docker 容器内 Broker 不能用 127.0.0.1 注册
+先查看本机局域网 IP（Mac 终端）
+bash
+运行
+ifconfig
+# 找到类似 192.168.x.x 的地址，例如 192.168.1.105
+启动 Broker，把 192.168.1.105 替换成你自己的 IP
+bash
+运行
+docker run -d \
+--name rocketmq-broker \
+--link rocketmq-namesrv:namesrv \
+-p 10909:10909 \
+-p 10911:10911 \
+-v ~/docker/rocketmq/broker:/root/store \
+-e "MAX_POSSIBLE_HEAP=256m" \
+-e "NAMESRV_ADDR=namesrv:9876" \
+-e "BROKER_IP_ADDR=192.168.100.199" \
+apache/rocketmq:4.9.6 sh mqbroker -c /home/rocketmq/rocketmq-4.9.6/conf/broker.conf
+参数说明：
+BROKER_IP_ADDR：宿主机局域网 IP，客户端 SpringBoot 才能正常连接
+挂载目录持久化消息，删除容器消息不丢失
+限制堆内存，Mac 本地开发不占资源
+四、3. 启动可视化控制台 Dashboard
+bash
+运行
+docker run -d \
+--name rocketmq-dashboard \
+-p 8081:8080 \
+--link rocketmq-namesrv:namesrv \
+-e "ROCKETMQ_NAMESRV_ADDR=namesrv:9876" \
+apacherocketmq/rocketmq-dashboard:latest
+访问地址：http://127.0.0.1:8081
+五、查看运行状态
+bash
+运行
+docker ps | grep rocketmq
+三个容器全部 up 代表启动成功。
+六、SpringBoot 整合 RocketMQ 配置（本地开发）
+Maven 依赖
+xml
+<dependency>
+    <groupId>org.apache.rocketmq</groupId>
+    <artifactId>rocketmq-spring-boot-starter</artifactId>
+    <version>2.2.3</version>
+</dependency>
+application-dev.yml
+yaml
+rocketmq:
+  name-server: 192.168.1.105:9876 # 你的本机局域网IP
+  producer:
+    group: demo-producer-group
+简单发送 / 消费示例
+java
+运行
+@RestController
+@RequestMapping("/mq")
+public class MqController {
+    @Autowired
+    private RocketMQTemplate rocketMQTemplate;
+
+    @GetMapping("/send")
+    public String sendMsg() {
+        rocketMQTemplate.convertAndSend("test-topic", "Hello RocketMQ Docker");
+        return "发送成功";
+    }
+}
+java
+运行
+@Component
+@RocketMQMessageListener(topic = "test-topic", consumerGroup = "demo-consumer-group")
+public class TestConsumer implements RocketMQListener<String> {
+    @Override
+    public void onMessage(String message) {
+        System.out.println("收到消息：" + message);
+    }
+}
+七、常用运维命令
+bash
+运行
+# 查看 namesrv 日志
+docker logs -f rocketmq-namesrv
+
+# 查看 broker 日志
+docker logs -f rocketmq-broker
+
+# 停止/删除
+docker stop rocketmq-dashboard rocketmq-broker rocketmq-namesrv
+docker rm -f rocketmq-dashboard rocketmq-broker rocketmq-namesrv
+八、常见报错解决
+SpringBoot 连接超时、无法收发消息
+没配置 BROKER_IP_ADDR，必须填本机局域网 IP，不能 127.0.0.1
+端口被占用
+修改 -p 映射端口，如 -p 9877:9876
+Mac 磁盘空间不足
+清理 Docker 镜像，或调整挂载目录
+控制台空白 / 看不到 Broker
+确认 namesrv 容器正常运行，link 关联正常
+九、生产环境补充要点
+集群部署多台 namesrv、broker
+开启 Broker 权限账号密码
+调整堆内存大小，根据服务器配置修改 MAX_POSSIBLE_HEAP
+消息持久化挂载到独立磁盘，避免丢失
+消息堆积监控结合 Dashboard 告警

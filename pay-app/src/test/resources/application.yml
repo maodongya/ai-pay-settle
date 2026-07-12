@@ -1,0 +1,27 @@
+spring:
+  profiles:
+    active: h2
+  datasource:
+    url: jdbc:h2:mem:pay_settle_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  sql:
+    init:
+      mode: never
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/data-h2.sql
+
+pay:
+  mq:
+    enabled: false
+    clearance-via-mq: true
+    outbox-via-mq: true
+    payment-callback-via-mq: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto

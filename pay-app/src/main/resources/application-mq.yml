@@ -1,0 +1,13 @@
+# RocketMQ 联调/压测 Profile（配合 --spring.profiles.active=mysql,mq 或 h2,mq）
+pay:
+  mq:
+    enabled: true
+    name-server: 127.0.0.1:9877
+    producer-group: pay-settle-producer
+
+rocketmq:
+  name-server: 127.0.0.1:9877
+  producer:
+    group: pay-settle-producer
+    send-message-timeout: 10000
+    retry-times-when-send-failed: 2
