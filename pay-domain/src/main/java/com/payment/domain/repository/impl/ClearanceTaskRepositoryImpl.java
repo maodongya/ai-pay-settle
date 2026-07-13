@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.payment.domain.entity.ClearanceTaskEntity;
 import com.payment.domain.mapper.ClearanceTaskMapper;
 import com.payment.domain.repository.ClearanceTaskRepository;
+import com.payment.domain.service.ShardRouteService;
 import com.payment.domain.support.MapperHelper;
+import com.payment.domain.support.ShardQueryHelper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,9 +18,12 @@ import java.util.Optional;
 public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
 
     private final ClearanceTaskMapper clearanceTaskMapper;
+    private final ShardRouteService shardRouteService;
 
-    public ClearanceTaskRepositoryImpl(ClearanceTaskMapper clearanceTaskMapper) {
+    public ClearanceTaskRepositoryImpl(ClearanceTaskMapper clearanceTaskMapper,
+                                       ShardRouteService shardRouteService) {
         this.clearanceTaskMapper = clearanceTaskMapper;
+        this.shardRouteService = shardRouteService;
     }
 
     @Override
@@ -28,8 +33,9 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
 
     @Override
     public Optional<ClearanceTaskEntity> findByBillNo(String billNo) {
-        return Optional.ofNullable(clearanceTaskMapper.selectOne(
-                new QueryWrapper<ClearanceTaskEntity>().eq("bill_no", billNo)));
+        QueryWrapper<ClearanceTaskEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.byBillNo(wrapper, billNo, shardRouteService);
+        return Optional.ofNullable(clearanceTaskMapper.selectOne(wrapper));
     }
 
     @Override

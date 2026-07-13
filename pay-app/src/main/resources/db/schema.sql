@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS fee_calc_result (
 CREATE TABLE IF NOT EXISTS split_detail (
   id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
   bill_no VARCHAR(64) NOT NULL COMMENT '账单号',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
   party_type TINYINT NOT NULL COMMENT '参与方类型：1平台 2一级代理 3二级代理 4合伙人 5商户',
   party_id BIGINT NOT NULL COMMENT '参与方ID',
   amount DECIMAL(18,2) NOT NULL COMMENT '清分金额',
@@ -110,6 +111,7 @@ CREATE TABLE IF NOT EXISTS split_detail (
 CREATE TABLE IF NOT EXISTS outbox_message (
   id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
   biz_key VARCHAR(64) NOT NULL COMMENT '业务键',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
   topic VARCHAR(64) NOT NULL COMMENT '消息主题',
   payload TEXT NOT NULL COMMENT '消息载荷(JSON)',
   status TINYINT NOT NULL COMMENT '发送状态：0待发送 1已发送',
@@ -185,6 +187,7 @@ CREATE TABLE IF NOT EXISTS merchant_payable_suspend (
 CREATE TABLE IF NOT EXISTS account_voucher (
   voucher_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '凭证ID',
   bill_no VARCHAR(64) NOT NULL COMMENT '关联账单号',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
   debit_subject VARCHAR(32) NOT NULL COMMENT '借方科目',
   credit_subject VARCHAR(32) NOT NULL COMMENT '贷方科目',
   amount DECIMAL(18,2) NOT NULL COMMENT '凭证金额',
@@ -203,6 +206,21 @@ CREATE TABLE IF NOT EXISTS reconcile_bill (
   create_time TIMESTAMP NOT NULL COMMENT '创建时间',
   CONSTRAINT uk_merchant_date UNIQUE (merchant_id, bill_date)
 ) COMMENT='商户对账单';
+
+-- 单据分片路由（config 库）
+CREATE TABLE IF NOT EXISTS bill_route (
+  bill_no VARCHAR(64) NOT NULL PRIMARY KEY COMMENT '清算单据号',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
+  bill_type TINYINT NOT NULL COMMENT '单据类型',
+  create_time TIMESTAMP NOT NULL COMMENT '创建时间'
+) COMMENT='单据分片路由索引';
+
+-- 结算单分片路由（config 库）
+CREATE TABLE IF NOT EXISTS settle_route (
+  settle_no VARCHAR(64) NOT NULL PRIMARY KEY COMMENT '结算单号',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
+  create_time TIMESTAMP NOT NULL COMMENT '创建时间'
+) COMMENT='结算单分片路由索引';
 
 -- 告警记录
 CREATE TABLE IF NOT EXISTS alert_record (

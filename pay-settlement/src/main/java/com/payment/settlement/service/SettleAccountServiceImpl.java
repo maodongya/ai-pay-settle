@@ -10,6 +10,7 @@ import com.payment.common.exception.ErrorCode; // 错误码
 import com.payment.common.util.SeqGenerator; // 序列号生成器
 import com.payment.domain.entity.*; // 结算领域实体
 import com.payment.domain.repository.*; // 结算领域仓储
+import com.payment.domain.service.ShardRouteService;
 import com.payment.control.service.AlertService; // 告警服务
 import com.payment.settlement.account.AccountOperator; // 账户操作组件
 import com.payment.settlement.channel.MockPaymentChannel; // 模拟支付渠道
@@ -39,6 +40,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     private final MerchantPayableSuspendRepository suspendRepository; // 应付挂账仓储
     private final MockPaymentChannel paymentChannel; // 模拟支付渠道
     private final AlertService alertService; // 告警服务
+    private final ShardRouteService shardRouteService; // 分片路由
 
     /**
      * 构造注入依赖。
@@ -50,7 +52,8 @@ public class SettleAccountServiceImpl implements SettleAccountService {
                                     WithdrawApplyRepository withdrawApplyRepository,
                                     MerchantPayableSuspendRepository suspendRepository,
                                     MockPaymentChannel paymentChannel,
-                                    AlertService alertService) {
+                                    AlertService alertService,
+                                    ShardRouteService shardRouteService) {
         this.accountOperator = accountOperator; // 赋值账户操作
         this.accountRepository = accountRepository; // 赋值账户仓储
         this.contractRepository = contractRepository; // 赋值合约仓储
@@ -59,6 +62,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         this.suspendRepository = suspendRepository; // 赋值挂账仓储
         this.paymentChannel = paymentChannel; // 赋值支付渠道
         this.alertService = alertService; // 赋值告警服务
+        this.shardRouteService = shardRouteService; // 分片路由
     }
 
     /**
@@ -181,6 +185,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         order.createTime = LocalDateTime.now(); // 创建时间
         order.updateTime = LocalDateTime.now(); // 更新时间
         settlementOrderRepository.save(order); // 保存订单
+        shardRouteService.registerSettleRoute(settleNo, merchantId); // 注册分片路由
 
         WithdrawApplyEntity apply = new WithdrawApplyEntity(); // 创建提现申请
         apply.applyNo = applyNo; // 申请单号
@@ -301,6 +306,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         order.createTime = LocalDateTime.now(); // 创建时间
         order.updateTime = LocalDateTime.now(); // 更新时间
         settlementOrderRepository.save(order); // 保存订单
+        shardRouteService.registerSettleRoute(settleNo, account.merchantId); // 注册分片路由
 
         paymentChannel.submitAsync(settleNo, amount); // 异步提交支付
         return true; // 处理成功
@@ -357,6 +363,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         order.createTime = LocalDateTime.now(); // 创建时间
         order.updateTime = LocalDateTime.now(); // 更新时间
         settlementOrderRepository.save(order); // 保存订单
+        shardRouteService.registerSettleRoute(settleNo, failedOrder.merchantId); // 注册分片路由
 
         paymentChannel.submitAsync(settleNo, failedOrder.settleAmount); // 异步提交支付
     }

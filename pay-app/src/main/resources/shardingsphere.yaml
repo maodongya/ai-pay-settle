@@ -1,0 +1,167 @@
+# ShardingSphere 5.5 — 4 库 × 4 表 = 16 分片，分片键 merchant_id
+databaseName: pay_data_sharding
+
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_00?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: 123456
+  ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_01?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: 123456
+  ds_2:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_02?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: 123456
+  ds_3:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_03?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: 123456
+
+rules:
+  - !SHARDING
+    tables:
+      trade_bill:
+        actualDataNodes: ds_${0..3}.trade_bill_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      clearance_task:
+        actualDataNodes: ds_${0..3}.clearance_task_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      fee_calc_result:
+        actualDataNodes: ds_${0..3}.fee_calc_result_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      split_detail:
+        actualDataNodes: ds_${0..3}.split_detail_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      account_voucher:
+        actualDataNodes: ds_${0..3}.account_voucher_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      outbox_message:
+        actualDataNodes: ds_${0..3}.outbox_message_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      merchant_settle_account:
+        actualDataNodes: ds_${0..3}.merchant_settle_account_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      account_flow:
+        actualDataNodes: ds_${0..3}.account_flow_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      settlement_order:
+        actualDataNodes: ds_${0..3}.settlement_order_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      withdraw_apply:
+        actualDataNodes: ds_${0..3}.withdraw_apply_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      merchant_payable_suspend:
+        actualDataNodes: ds_${0..3}.merchant_payable_suspend_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+      reconcile_bill:
+        actualDataNodes: ds_${0..3}.reconcile_bill_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-tbl-mod
+    bindingTables:
+      - trade_bill,clearance_task,fee_calc_result,split_detail,account_voucher,outbox_message
+      - merchant_settle_account,account_flow,settlement_order,withdraw_apply,merchant_payable_suspend,reconcile_bill
+    shardingAlgorithms:
+      merchant-db-inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_$->{(merchant_id % 16).intdiv(4)}
+      merchant-tbl-mod:
+        type: MOD
+        props:
+          sharding-count: '4'
+
+props:
+  sql-show: false

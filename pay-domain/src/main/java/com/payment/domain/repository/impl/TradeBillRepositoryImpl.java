@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.payment.domain.entity.TradeBillEntity;
 import com.payment.domain.mapper.TradeBillMapper;
 import com.payment.domain.repository.TradeBillRepository;
+import com.payment.domain.service.ShardRouteService;
 import com.payment.domain.support.MapperHelper;
+import com.payment.domain.support.ShardQueryHelper;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -14,9 +16,11 @@ import java.util.Optional;
 public class TradeBillRepositoryImpl implements TradeBillRepository {
 
     private final TradeBillMapper tradeBillMapper;
+    private final ShardRouteService shardRouteService;
 
-    public TradeBillRepositoryImpl(TradeBillMapper tradeBillMapper) {
+    public TradeBillRepositoryImpl(TradeBillMapper tradeBillMapper, ShardRouteService shardRouteService) {
         this.tradeBillMapper = tradeBillMapper;
+        this.shardRouteService = shardRouteService;
     }
 
     @Override
@@ -26,15 +30,17 @@ public class TradeBillRepositoryImpl implements TradeBillRepository {
 
     @Override
     public Optional<TradeBillEntity> findByBillNo(String billNo) {
-        return Optional.ofNullable(tradeBillMapper.selectOne(
-                new QueryWrapper<TradeBillEntity>().eq("bill_no", billNo)));
+        QueryWrapper<TradeBillEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.byBillNo(wrapper, billNo, shardRouteService);
+        return Optional.ofNullable(tradeBillMapper.selectOne(wrapper));
     }
 
     @Override
     public List<TradeBillEntity> findByStatusAndOriginBillNo(Integer status, String originBillNo) {
-        return tradeBillMapper.selectList(new QueryWrapper<TradeBillEntity>()
-                .eq("status", status)
-                .eq("origin_bill_no", originBillNo));
+        QueryWrapper<TradeBillEntity> wrapper = new QueryWrapper<TradeBillEntity>()
+                .eq("status", status);
+        ShardQueryHelper.byBillNo(wrapper, originBillNo, shardRouteService);
+        return tradeBillMapper.selectList(wrapper);
     }
 
     @Override

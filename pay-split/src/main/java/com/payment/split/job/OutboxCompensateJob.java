@@ -73,6 +73,7 @@ public class OutboxCompensateJob {
             try { // 补写 Outbox
                 OutboxMessageEntity outbox = new OutboxMessageEntity(); // 实体
                 outbox.bizKey = billNo; // 业务键
+                outbox.merchantId = result.merchantId; // 分片键
                 outbox.topic = SETTLE_TOPIC; // Topic
                 outbox.payload = buildSettlePayload(result); // JSON
                 outbox.status = 0; // 待发送

@@ -2,6 +2,7 @@ package com.payment.calc.support; // 清算 MQ 发布组件包
 
 import com.fasterxml.jackson.core.JsonProcessingException; // JSON 序列化异常
 import com.fasterxml.jackson.databind.ObjectMapper; // JSON 工具
+import com.payment.common.shard.ShardRouter;
 import com.payment.mq.MqTags; // MQ Tag 常量
 import com.payment.mq.MqTopics; // MQ Topic 常量
 import com.payment.mq.PayMqProducer; // 统一生产者
@@ -39,7 +40,7 @@ public class ClearanceTaskPublisher {
         payload.put("version", "1.0"); // 协议版本
         payload.put("billNo", billNo); // 账单号
         payload.put("merchantId", merchantId); // 商户 ID
-        payload.put("shardId", (int) (merchantId % 16)); // 分片与 Queue 数对齐
+        payload.put("shardId", ShardRouter.shardId(merchantId)); // 分片与 Queue 数对齐
         payload.put("createTime", LocalDateTime.now().toString()); // 创建时间
         try { // 序列化并发送
             String json = objectMapper.writeValueAsString(payload); // 转 JSON

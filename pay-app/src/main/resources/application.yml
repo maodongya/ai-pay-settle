@@ -26,6 +26,8 @@ pay:
   db:
     init:
       enabled: true
+  shard:
+    enabled: false
   mq:
     enabled: false
     name-server: 127.0.0.1:9876

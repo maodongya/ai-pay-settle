@@ -24,6 +24,9 @@ public class SplitDetailEntity {
     @TableField("bill_no") // 非空，最大长度 64
     public String billNo;
 
+    @TableField("merchant_id")
+    public Long merchantId;
+
     /** 参与方类型 */
     @TableField("party_type") // 非空，列名 party_type
     public Integer partyType;

@@ -23,6 +23,9 @@ public class OutboxMessageEntity {
     @TableField("biz_key") // 非空，最大长度 64
     public String bizKey;
 
+    @TableField("merchant_id")
+    public Long merchantId;
+
     /** 消息主题 */
     public String topic; // 非空，最大长度 64
 

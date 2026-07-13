@@ -1,5 +1,7 @@
 package com.payment.config;
 
+import com.baomidou.dynamic.datasource.DynamicRoutingDataSource;
+import com.payment.domain.datasource.DataSourceNames;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
@@ -16,7 +18,8 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 
 /**
- * 启动时检测并执行建表/种子数据脚本（MySQL 等非内嵌库兜底）。
+ * 启动时检测并执行建表/种子数据脚本。
+ * 动态数据源模式下分别初始化 config / data 数据源。
  */
 @Component
 @ConditionalOnProperty(prefix = "pay.db.init", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -34,6 +37,9 @@ public class DatabaseSchemaInitializer implements InitializingBean {
     @Value("${spring.sql.init.data-locations:classpath:db/data-mysql.sql}")
     private String dataLocation;
 
+    @Value("${pay.db.init.config-schema-locations:}")
+    private String configSchemaLocation;
+
     public DatabaseSchemaInitializer(DataSource dataSource, ResourceLoader resourceLoader) {
         this.dataSource = dataSource;
         this.resourceLoader = resourceLoader;
@@ -41,18 +47,36 @@ public class DatabaseSchemaInitializer implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() throws Exception {
-        if (!needsInitialization()) {
-            log.info("数据库表已存在，跳过 schema/data 初始化");
+        if (dataSource instanceof DynamicRoutingDataSource dynamic) {
+            initIfNeeded(dynamic.getDataSource(DataSourceNames.CONFIG), resolveConfigSchema(), dataLocation, "merchant_profile");
+            initIfNeeded(dynamic.getDataSource(DataSourceNames.DATA), schemaLocation, null, CHECK_TABLE);
             return;
         }
-        log.info("检测到数据库未初始化，开始执行脚本: schema={}, data={}", schemaLocation, dataLocation);
+        initIfNeeded(dataSource, schemaLocation, dataLocation, CHECK_TABLE);
+    }
+
+    private String resolveConfigSchema() {
+        if (configSchemaLocation != null && !configSchemaLocation.isBlank()) {
+            return configSchemaLocation;
+        }
+        return schemaLocation;
+    }
+
+    private void initIfNeeded(DataSource target, String schema, String data, String checkTable) throws Exception {
+        if (target == null || !needsInitialization(target, checkTable)) {
+            log.info("数据库表已存在，跳过 schema 初始化: checkTable={}", checkTable);
+            return;
+        }
+        log.info("开始执行数据库初始化: schema={}", schema);
         ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
         populator.setSeparator(";");
         populator.setContinueOnError(false);
         populator.setSqlScriptEncoding("UTF-8");
-        populator.addScript(loadRequiredScript(schemaLocation));
-        populator.addScript(loadRequiredScript(dataLocation));
-        populator.execute(dataSource);
+        populator.addScript(loadRequiredScript(schema));
+        if (data != null && !data.isBlank()) {
+            populator.addScript(loadRequiredScript(data));
+        }
+        populator.execute(target);
         log.info("数据库初始化完成");
     }
 
@@ -64,11 +88,11 @@ public class DatabaseSchemaInitializer implements InitializingBean {
         return resource;
     }
 
-    private boolean needsInitialization() throws Exception {
-        try (Connection connection = dataSource.getConnection()) {
+    private boolean needsInitialization(DataSource target, String checkTable) throws Exception {
+        try (Connection connection = target.getConnection()) {
             String catalog = connection.getCatalog();
             DatabaseMetaData metaData = connection.getMetaData();
-            try (ResultSet rs = metaData.getTables(catalog, null, CHECK_TABLE, new String[]{"TABLE"})) {
+            try (ResultSet rs = metaData.getTables(catalog, null, checkTable, new String[]{"TABLE"})) {
                 return !rs.next();
             }
         }

@@ -1,9 +1,19 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:pay_settle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    dynamic:
+      primary: data
+      strict: true
+      datasource:
+        config:
+          driver-class-name: org.h2.Driver
+          url: jdbc:h2:mem:pay_settle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+          username: sa
+          password:
+        data:
+          driver-class-name: org.h2.Driver
+          url: jdbc:h2:mem:pay_settle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+          username: sa
+          password:
   h2:
     console:
       enabled: true
@@ -14,3 +24,7 @@ spring:
       schema-locations: classpath:db/schema.sql
       data-locations: classpath:db/data-h2.sql
       encoding: UTF-8
+
+pay:
+  shard:
+    enabled: false

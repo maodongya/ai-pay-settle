@@ -1,0 +1,33 @@
+# 生产分片模式：ShardingSphere 驱动 data 数据源，config 仍走 pay_config
+spring:
+  config:
+    activate:
+      on-profile: sharding
+  datasource:
+    dynamic:
+      primary: data
+      strict: true
+      datasource:
+        config:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://127.0.0.1:3306/pay_config?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+          username: root
+          password: 123456
+        data:
+          driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+          url: jdbc:shardingsphere:classpath:shardingsphere.yaml
+
+pay:
+  shard:
+    enabled: true
+  db:
+    init:
+      enabled: true
+      config-schema-locations: classpath:db/schema-config.sql
+    shard-init:
+      enabled: true
+
+spring:
+  sql:
+    init:
+      schema-locations: classpath:db/schema-data.sql

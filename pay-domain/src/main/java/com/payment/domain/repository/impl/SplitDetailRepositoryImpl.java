@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.payment.domain.entity.SplitDetailEntity;
 import com.payment.domain.mapper.SplitDetailMapper;
 import com.payment.domain.repository.SplitDetailRepository;
+import com.payment.domain.service.ShardRouteService;
 import com.payment.domain.support.MapperHelper;
+import com.payment.domain.support.ShardQueryHelper;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -13,9 +15,12 @@ import java.util.List;
 public class SplitDetailRepositoryImpl implements SplitDetailRepository {
 
     private final SplitDetailMapper splitDetailMapper;
+    private final ShardRouteService shardRouteService;
 
-    public SplitDetailRepositoryImpl(SplitDetailMapper splitDetailMapper) {
+    public SplitDetailRepositoryImpl(SplitDetailMapper splitDetailMapper,
+                                     ShardRouteService shardRouteService) {
         this.splitDetailMapper = splitDetailMapper;
+        this.shardRouteService = shardRouteService;
     }
 
     @Override
@@ -30,11 +35,15 @@ public class SplitDetailRepositoryImpl implements SplitDetailRepository {
 
     @Override
     public boolean existsByBillNo(String billNo) {
-        return splitDetailMapper.selectCount(new QueryWrapper<SplitDetailEntity>().eq("bill_no", billNo)) > 0;
+        QueryWrapper<SplitDetailEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.byBillNo(wrapper, billNo, shardRouteService);
+        return splitDetailMapper.selectCount(wrapper) > 0;
     }
 
     @Override
     public List<SplitDetailEntity> findByBillNo(String billNo) {
-        return splitDetailMapper.selectList(new QueryWrapper<SplitDetailEntity>().eq("bill_no", billNo));
+        QueryWrapper<SplitDetailEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.byBillNo(wrapper, billNo, shardRouteService);
+        return splitDetailMapper.selectList(wrapper);
     }
 }

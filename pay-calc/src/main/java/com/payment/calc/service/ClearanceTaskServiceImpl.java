@@ -11,6 +11,7 @@ import com.payment.calc.support.ClearanceTaskPublisher; // 清算 MQ 发布器
 import com.payment.common.enums.BillStatus; // 账单状态枚举
 import com.payment.common.enums.BillType; // 账单类型枚举
 import com.payment.common.enums.TaskStatus; // 任务状态枚举
+import com.payment.common.shard.ShardRouter;
 import com.payment.common.metrics.PayBusinessMetrics; // 业务吞吐指标
 import com.payment.control.service.AlertService; // 告警服务
 import com.payment.control.service.ExceptionRecordService; // 异常工单服务
@@ -87,7 +88,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
         ClearanceTaskEntity task = new ClearanceTaskEntity(); // 创建任务实体
         task.billNo = billNo; // 账单号
         task.merchantId = merchantId; // 商户 ID
-        task.shardId = (int) (merchantId % 16); // 分片 ID，与 Queue 数 16 对齐
+        task.shardId = ShardRouter.shardId(merchantId); // 分片 ID，与 Queue 数 16 对齐
         task.status = TaskStatus.PENDING.getCode(); // 待处理状态
         task.retryCount = 0; // 重试次数归零
         task.createTime = LocalDateTime.now(); // 创建时间

@@ -24,6 +24,9 @@ public class AccountVoucherEntity {
     @TableField("bill_no") // 非空，最大长度 64
     public String billNo;
 
+    @TableField("merchant_id")
+    public Long merchantId;
+
     /** 借方科目 */
     @TableField("debit_subject") // 非空，最大长度 32
     public String debitSubject;

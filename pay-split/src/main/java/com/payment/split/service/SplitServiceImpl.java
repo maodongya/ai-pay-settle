@@ -75,6 +75,7 @@ public class SplitServiceImpl implements SplitService {
         if (calcResult.merchantIncome.compareTo(BigDecimal.ZERO) != 0) { // 商户收入非零
             OutboxMessageEntity outbox = new OutboxMessageEntity(); // 创建发件箱消息
             outbox.bizKey = calcResult.billNo; // 业务键
+            outbox.merchantId = calcResult.merchantId; // 分片键
             outbox.topic = SETTLE_TOPIC; // 消息主题
             outbox.payload = buildSettlePayload(calcResult); // 构建载荷
             outbox.status = 0; // 待发送状态
@@ -89,30 +90,31 @@ public class SplitServiceImpl implements SplitService {
      */
     private List<SplitDetailEntity> buildDetails(FeeCalcResultDTO r, AgentRelationDTO rel) {
         List<SplitDetailEntity> list = new ArrayList<>(); // 创建明细列表
-        addPositive(list, r.billNo, PartyType.PLATFORM, 0L, r.platformFee, Direction.RECEIVABLE); // 平台应收
+        addPositive(list, r.billNo, r.merchantId, PartyType.PLATFORM, 0L, r.platformFee, Direction.RECEIVABLE); // 平台应收
         if (rel.agentId != null) { // 有一级代理
-            addPositive(list, r.billNo, PartyType.AGENT_L1, rel.agentId, r.agentL1Share, Direction.PAYABLE); // 一级代理应付
+            addPositive(list, r.billNo, r.merchantId, PartyType.AGENT_L1, rel.agentId, r.agentL1Share, Direction.PAYABLE); // 一级代理应付
         }
         if (rel.secondAgentId != null) { // 有二级代理
-            addPositive(list, r.billNo, PartyType.AGENT_L2, rel.secondAgentId, r.agentL2Share, Direction.PAYABLE); // 二级代理应付
+            addPositive(list, r.billNo, r.merchantId, PartyType.AGENT_L2, rel.secondAgentId, r.agentL2Share, Direction.PAYABLE); // 二级代理应付
         }
         if (rel.splitPartyId != null) { // 有合作方
-            addPositive(list, r.billNo, PartyType.PARTNER, rel.splitPartyId, r.partnerShare, Direction.PAYABLE); // 合作方应付
+            addPositive(list, r.billNo, r.merchantId, PartyType.PARTNER, rel.splitPartyId, r.partnerShare, Direction.PAYABLE); // 合作方应付
         }
-        addPositive(list, r.billNo, PartyType.MERCHANT, r.merchantId, r.merchantIncome, Direction.PAYABLE); // 商户应付
+        addPositive(list, r.billNo, r.merchantId, PartyType.MERCHANT, r.merchantId, r.merchantIncome, Direction.PAYABLE); // 商户应付
         return list; // 返回明细列表
     }
 
     /**
      * 添加非零分账明细，负金额自动转为应收方向。
      */
-    private void addPositive(List<SplitDetailEntity> list, String billNo, PartyType type, Long partyId,
+    private void addPositive(List<SplitDetailEntity> list, String billNo, Long merchantId, PartyType type, Long partyId,
                              BigDecimal amount, Direction direction) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) == 0) { // 金额为空或零
             return; // 跳过
         }
         SplitDetailEntity detail = new SplitDetailEntity(); // 创建明细
         detail.billNo = billNo; // 账单号
+        detail.merchantId = merchantId; // 分片键
         detail.partyType = type.getCode(); // 参与方类型
         detail.partyId = partyId; // 参与方 ID
         detail.amount = amount.abs(); // 取绝对值

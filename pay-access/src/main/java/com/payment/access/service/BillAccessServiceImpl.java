@@ -12,6 +12,7 @@ import com.payment.common.enums.BillType; // 账单类型
 import com.payment.common.exception.BizException; // 业务异常
 import com.payment.domain.entity.TradeBillEntity; // 账单实体
 import com.payment.domain.repository.TradeBillRepository; // 账单仓储
+import com.payment.domain.service.ShardRouteService;
 import com.payment.mq.config.PayMqProperties; // MQ 配置
 import com.payment.mq.support.MqBacklogState; // 积压熔断状态
 import org.springframework.stereotype.Service; // 服务注解
@@ -32,6 +33,7 @@ public class BillAccessServiceImpl implements BillAccessService {
     private final ClearanceTaskPublisher clearanceTaskPublisher; // 有序发 clearance_task
     private final MqBacklogState mqBacklogState; // 积压熔断
     private final PayBusinessMetrics businessMetrics; // 业务吞吐指标
+    private final ShardRouteService shardRouteService; // 分片路由
 
     /** 构造注入 */
     public BillAccessServiceImpl(TradeBillRepository tradeBillRepository,
@@ -40,7 +42,8 @@ public class BillAccessServiceImpl implements BillAccessService {
                                  PayMqProperties payMqProperties,
                                  ClearanceTaskPublisher clearanceTaskPublisher,
                                  MqBacklogState mqBacklogState,
-                                 PayBusinessMetrics businessMetrics) {
+                                 PayBusinessMetrics businessMetrics,
+                                 ShardRouteService shardRouteService) {
         this.tradeBillRepository = tradeBillRepository; // 账单仓储
         this.merchantValidateService = merchantValidateService; // 校验服务
         this.clearanceTaskService = clearanceTaskService; // 清算服务
@@ -48,6 +51,7 @@ public class BillAccessServiceImpl implements BillAccessService {
         this.clearanceTaskPublisher = clearanceTaskPublisher; // 发布器
         this.mqBacklogState = mqBacklogState; // 熔断状态
         this.businessMetrics = businessMetrics; // 指标
+        this.shardRouteService = shardRouteService; // 分片路由
     }
 
     /**
@@ -97,6 +101,7 @@ public class BillAccessServiceImpl implements BillAccessService {
         entity.createTime = LocalDateTime.now(); // 创建时间
         entity.updateTime = LocalDateTime.now(); // 更新时间
         tradeBillRepository.save(entity); // 落库
+        shardRouteService.registerBillRoute(bill.billNo, bill.merchantId, bill.billType); // 注册分片路由
 
         if (status == BillStatus.PENDING.getCode()) { // 可立即清算
             clearanceTaskService.createTask(bill.billNo, bill.merchantId); // 建任务

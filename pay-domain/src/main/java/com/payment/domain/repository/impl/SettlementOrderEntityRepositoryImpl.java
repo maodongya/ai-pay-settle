@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.payment.domain.entity.SettlementOrderEntity;
 import com.payment.domain.mapper.SettlementOrderMapper;
 import com.payment.domain.repository.SettlementOrderEntityRepository;
+import com.payment.domain.service.ShardRouteService;
 import com.payment.domain.support.MapperHelper;
+import com.payment.domain.support.ShardQueryHelper;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -15,9 +17,12 @@ import java.util.Optional;
 public class SettlementOrderEntityRepositoryImpl implements SettlementOrderEntityRepository {
 
     private final SettlementOrderMapper settlementOrderMapper;
+    private final ShardRouteService shardRouteService;
 
-    public SettlementOrderEntityRepositoryImpl(SettlementOrderMapper settlementOrderMapper) {
+    public SettlementOrderEntityRepositoryImpl(SettlementOrderMapper settlementOrderMapper,
+                                                 ShardRouteService shardRouteService) {
         this.settlementOrderMapper = settlementOrderMapper;
+        this.shardRouteService = shardRouteService;
     }
 
     @Override
@@ -27,8 +32,9 @@ public class SettlementOrderEntityRepositoryImpl implements SettlementOrderEntit
 
     @Override
     public Optional<SettlementOrderEntity> findBySettleNo(String settleNo) {
-        return Optional.ofNullable(settlementOrderMapper.selectOne(
-                new QueryWrapper<SettlementOrderEntity>().eq("settle_no", settleNo)));
+        QueryWrapper<SettlementOrderEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.bySettleNo(wrapper, settleNo, shardRouteService);
+        return Optional.ofNullable(settlementOrderMapper.selectOne(wrapper));
     }
 
     @Override
@@ -54,14 +60,16 @@ public class SettlementOrderEntityRepositoryImpl implements SettlementOrderEntit
 
     @Override
     public boolean existsByOriginSettleNo(String originSettleNo) {
-        return settlementOrderMapper.selectCount(new QueryWrapper<SettlementOrderEntity>()
-                .eq("origin_settle_no", originSettleNo)) > 0;
+        QueryWrapper<SettlementOrderEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.bySettleNo(wrapper, originSettleNo, shardRouteService);
+        return settlementOrderMapper.selectCount(wrapper) > 0;
     }
 
     @Override
     public boolean existsByOriginSettleNoAndStatusNot(String originSettleNo, Integer status) {
-        return settlementOrderMapper.selectCount(new QueryWrapper<SettlementOrderEntity>()
-                .eq("origin_settle_no", originSettleNo)
-                .ne("status", status)) > 0;
+        QueryWrapper<SettlementOrderEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.bySettleNo(wrapper, originSettleNo, shardRouteService);
+        wrapper.ne("status", status);
+        return settlementOrderMapper.selectCount(wrapper) > 0;
     }
 }
