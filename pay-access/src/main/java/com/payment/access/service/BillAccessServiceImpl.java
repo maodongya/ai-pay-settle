@@ -116,7 +116,7 @@ public class BillAccessServiceImpl implements BillAccessService {
         if (payMqProperties.isClearanceViaMq()) { // MQ 流水线
             clearanceTaskPublisher.publish(billNo, merchantId); // 有序发 clearance_task
         } else { // 本地同步
-            clearanceTaskService.executeTask(billNo); // 直接执行
+            clearanceTaskService.executeTask(billNo, merchantId); // 直接执行
         }
     }
 

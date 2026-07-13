@@ -14,8 +14,10 @@ import java.time.LocalDateTime;
 @DS(DataSourceNames.DATA)
 public interface ClearanceTaskMapper extends BaseMapper<ClearanceTaskEntity> {
 
-    @Update("UPDATE clearance_task SET status = #{newStatus}, update_time = #{now} WHERE bill_no = #{billNo} AND status = #{expectedStatus}")
+    @Update("UPDATE clearance_task SET status = #{newStatus}, update_time = #{now} "
+            + "WHERE bill_no = #{billNo} AND merchant_id = #{merchantId} AND status = #{expectedStatus}")
     int claimTask(@Param("billNo") String billNo,
+                  @Param("merchantId") Long merchantId,
                   @Param("expectedStatus") Integer expectedStatus,
                   @Param("newStatus") Integer newStatus,
                   @Param("now") LocalDateTime now);

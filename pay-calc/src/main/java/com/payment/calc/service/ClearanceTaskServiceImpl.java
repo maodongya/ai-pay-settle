@@ -19,6 +19,7 @@ import com.payment.domain.entity.ClearanceTaskEntity; // 清算任务实体
 import com.payment.domain.entity.TradeBillEntity; // 交易账单实体
 import com.payment.domain.repository.ClearanceTaskRepository; // 清算任务仓储
 import com.payment.domain.repository.TradeBillRepository; // 交易账单仓储
+import com.payment.domain.service.ShardRouteService; // 分片路由
 import com.payment.mq.config.PayMqProperties; // MQ 开关
 import com.payment.mq.exception.NonRetryableException; // 不可 MQ 重试异常
 import org.slf4j.Logger; // 日志接口
@@ -26,7 +27,8 @@ import org.slf4j.LoggerFactory; // 日志工厂
 import org.springframework.stereotype.Service; // Spring 服务注解
 import org.springframework.transaction.annotation.Transactional; // 事务注解
 
-import java.time.Duration; // 时间间隔
+import com.payment.domain.support.ShardScanSupport;
+import java.time.Duration;
 import java.time.LocalDateTime; // 本地日期时间
 import java.util.List; // 列表
 import java.util.Optional; // Optional
@@ -42,6 +44,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
 
     private final ClearanceTaskRepository clearanceTaskRepository; // 清算任务仓储
     private final TradeBillRepository tradeBillRepository; // 交易账单仓储
+    private final ShardRouteService shardRouteService; // bill_no → merchant_id
     private final FeeCalcService feeCalcService; // 费用计算服务
     private final SplitService splitService; // 分账服务
     private final MerchantValidateService merchantValidateService; // 商户校验服务
@@ -56,6 +59,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
      */
     public ClearanceTaskServiceImpl(ClearanceTaskRepository clearanceTaskRepository,
                                     TradeBillRepository tradeBillRepository,
+                                    ShardRouteService shardRouteService,
                                     FeeCalcService feeCalcService,
                                     SplitService splitService,
                                     MerchantValidateService merchantValidateService,
@@ -66,6 +70,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
                                     PayBusinessMetrics businessMetrics) {
         this.clearanceTaskRepository = clearanceTaskRepository; // 赋值任务仓储
         this.tradeBillRepository = tradeBillRepository; // 赋值账单仓储
+        this.shardRouteService = shardRouteService; // 赋值路由服务
         this.feeCalcService = feeCalcService; // 赋值费用服务
         this.splitService = splitService; // 赋值分账服务
         this.merchantValidateService = merchantValidateService; // 赋值校验服务
@@ -102,8 +107,15 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     @Override // 实现接口方法
     @Transactional // 开启事务
     public void executeTask(String billNo) {
+        executeTask(billNo, null);
+    }
+
+    @Override
+    @Transactional
+    public void executeTask(String billNo, Long merchantId) {
+        Long resolvedMerchantId = resolveMerchantId(billNo, merchantId);
         int claimed = clearanceTaskRepository.claimTask( // 抢占 PENDING → RUNNING
-                billNo, TaskStatus.PENDING.getCode(), TaskStatus.RUNNING.getCode(), LocalDateTime.now());
+                billNo, resolvedMerchantId, TaskStatus.PENDING.getCode(), TaskStatus.RUNNING.getCode(), LocalDateTime.now());
         if (claimed == 0) { // 抢占失败
             handleUnclaimed(billNo); // 幂等/DEAD 短路
             return; // 结束
@@ -167,6 +179,21 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     }
 
     /**
+     * 解析 merchantId：MQ 载荷 → clearance_task → bill_route。
+     * 接入同事务内 bill_route 可能尚未对 config 数据源可见，故优先用任务表。
+     */
+    private Long resolveMerchantId(String billNo, Long merchantIdHint) {
+        if (merchantIdHint != null) {
+            return merchantIdHint;
+        }
+        Optional<ClearanceTaskEntity> task = clearanceTaskRepository.findByBillNo(billNo);
+        if (task.isPresent() && task.get().merchantId != null) {
+            return task.get().merchantId;
+        }
+        return shardRouteService.requireMerchantIdByBillNo(billNo);
+    }
+
+    /**
      * 抢占失败时的幂等与 DEAD 处理（避免 MQ L1 与 L2 双重重试浪费）。
      */
     private void handleUnclaimed(String billNo) {
@@ -191,15 +218,17 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
      */
     @Override // 实现接口方法
     public void retryFailedTasks(int limit) {
-        List<ClearanceTaskEntity> tasks = clearanceTaskRepository.findFailedReadyForRetry( // 到达 next_retry_time
-                TaskStatus.FAILED.getCode(), MAX_RETRY, LocalDateTime.now());
+        int perShard = ShardScanSupport.perShardLimit(limit);
+        List<ClearanceTaskEntity> tasks = ShardScanSupport.collectAcrossShards(shardId ->
+                clearanceTaskRepository.findFailedReadyForRetryByShard(
+                        TaskStatus.FAILED.getCode(), MAX_RETRY, LocalDateTime.now(), shardId, perShard));
         tasks.stream().limit(limit).forEach(t -> { // 限制批量
             t.status = TaskStatus.PENDING.getCode(); // 重置为待处理
             clearanceTaskRepository.save(t); // 保存任务
             if (payMqProperties.isClearanceViaMq()) { // MQ 模式
                 clearanceTaskPublisher.publish(t.billNo, t.merchantId); // 发 MQ 而非 sync execute
             } else { // 同步模式
-                executeTask(t.billNo); // 本地直接执行
+                executeTask(t.billNo, t.merchantId); // 本地直接执行
             }
         });
     }
@@ -217,7 +246,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             if (payMqProperties.isClearanceViaMq()) { // MQ 模式
                 clearanceTaskPublisher.publish(refund.billNo, refund.merchantId); // 异步清算
             } else { // 同步模式
-                executeTask(refund.billNo); // 本地执行
+                executeTask(refund.billNo, refund.merchantId); // 本地执行
             }
         }
     }

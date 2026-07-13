@@ -35,9 +35,11 @@ public class ClearanceTaskConsumer implements MqMessageHandler {
 
     @Override // 处理
     public void handle(String payload) {
-        try { // 解析 billNo
+        try { // 解析 billNo / merchantId
             JsonNode node = objectMapper.readTree(payload); // JSON
-            clearanceTaskService.executeTask(node.get("billNo").asText()); // 执行清算
+            String billNo = node.get("billNo").asText();
+            Long merchantId = node.has("merchantId") ? node.get("merchantId").asLong() : null;
+            clearanceTaskService.executeTask(billNo, merchantId); // 执行清算
         } catch (Exception e) { // 失败
             throw new IllegalStateException("clearance task consume failed", e); // 抛出
         }

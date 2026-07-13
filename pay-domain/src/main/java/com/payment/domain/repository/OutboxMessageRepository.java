@@ -16,6 +16,9 @@ public interface OutboxMessageRepository {
     /** 按状态查询前 N 条，按创建时间升序（Outbox 批量派发） */
     List<OutboxMessageEntity> findTopNByStatusOrderByCreateTimeAsc(Integer status, int limit);
 
+    /** 按分片查询 pending Outbox（Job 分片扫描） */
+    List<OutboxMessageEntity> findTopNByStatusAndShardIdOrderByCreateTimeAsc(Integer status, int shardId, int limit);
+
     /** 统计指定状态的 Outbox 行数（积压监控） */
     long countByStatus(Integer status);
 

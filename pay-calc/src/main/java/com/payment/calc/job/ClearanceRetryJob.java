@@ -4,17 +4,21 @@ import com.payment.api.service.ClearanceTaskService; // 清算任务服务接口
 import com.payment.common.enums.TaskStatus; // 任务状态枚举
 import com.payment.domain.entity.ClearanceTaskEntity; // 清算任务实体
 import com.payment.domain.repository.ClearanceTaskRepository; // 清算任务仓储
+import com.payment.domain.support.ShardScanSupport;
 import org.springframework.scheduling.annotation.Scheduled; // 定时任务注解
 import org.springframework.stereotype.Component; // Spring 组件注解
 
 import java.time.LocalDateTime; // 本地日期时间
+import java.util.ArrayList;
 import java.util.List; // 列表
 
 /**
- * 清算重试与看门狗定时任务。
+ * 清算重试与看门狗定时任务（16 分片并行扫描）。
  */
 @Component // 注册为 Spring 组件
 public class ClearanceRetryJob {
+
+    private static final int WATCHDOG_BATCH_PER_SHARD = 50;
 
     private final ClearanceTaskService clearanceTaskService; // 清算任务服务
     private final ClearanceTaskRepository clearanceTaskRepository; // 清算任务仓储
@@ -37,12 +41,15 @@ public class ClearanceRetryJob {
     }
 
     /**
-     * 看门狗：将长时间运行中的任务标记为失败。
+     * 看门狗：将长时间运行中的任务标记为失败（按分片扫描）。
      */
     @Scheduled(fixedDelayString = "${pay.clearance.watchdog-interval-ms:300000}") // 默认每 5 分钟执行
     public void watchdog() {
-        List<ClearanceTaskEntity> stale = clearanceTaskRepository.findByStatusAndUpdateTimeBefore( // 查询超时任务
-                TaskStatus.RUNNING.getCode(), LocalDateTime.now().minusMinutes(30)); // 超过 30 分钟
+        LocalDateTime threshold = LocalDateTime.now().minusMinutes(30);
+        List<ClearanceTaskEntity> stale = new ArrayList<>();
+        ShardScanSupport.forEachShard(shardId -> stale.addAll(
+                clearanceTaskRepository.findByStatusAndShardIdAndUpdateTimeBefore(
+                        TaskStatus.RUNNING.getCode(), shardId, threshold, WATCHDOG_BATCH_PER_SHARD)));
         for (ClearanceTaskEntity task : stale) { // 逐个处理
             task.status = TaskStatus.FAILED.getCode(); // 标记失败
             task.errorMsg = "watchdog timeout"; // 记录超时原因

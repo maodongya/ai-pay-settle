@@ -1,10 +1,9 @@
 package com.payment.split.job; // 分账/Outbox 定时任务包
 
-import com.fasterxml.jackson.databind.JsonNode; // 解析 Outbox JSON
-import com.fasterxml.jackson.databind.ObjectMapper; // JSON 工具
 import com.payment.control.service.AlertService; // 告警
 import com.payment.domain.entity.OutboxMessageEntity; // Outbox 实体
 import com.payment.domain.repository.OutboxMessageRepository; // Outbox 仓储
+import com.payment.domain.support.ShardScanSupport;
 import com.payment.mq.MqTags; // CREDIT Tag
 import com.payment.mq.PayMqProducer; // 生产者
 import com.payment.mq.config.PayMqProperties; // MQ 开关
@@ -16,10 +15,12 @@ import org.springframework.scheduling.annotation.Scheduled; // 定时
 import org.springframework.stereotype.Component; // 组件
 import org.springframework.transaction.annotation.Transactional; // 事务
 
+import java.util.ArrayList;
 import java.util.List; // 列表
 
 /**
  * 发件箱消息派发：经 MQ 有序投递 settle_amount_topic（同 merchant 串行入账）。
+ * 按 16 分片并行扫描，避免全库广播。
  */
 @Component // Spring 组件
 public class OutboxDispatchJob {
@@ -29,7 +30,6 @@ public class OutboxDispatchJob {
     private final OutboxMessageRepository outboxMessageRepository; // Outbox 仓储
     private final PayMqProducer payMqProducer; // MQ 生产者
     private final PayMqProperties payMqProperties; // MQ 配置
-    private final ObjectMapper objectMapper; // 解析 merchantId
     private final AlertService alertService; // 失败告警
     private final PayMqProduceMetrics produceMetrics; // Outbox 投递指标
     private final int batchSize; // 每批条数
@@ -38,14 +38,12 @@ public class OutboxDispatchJob {
     public OutboxDispatchJob(OutboxMessageRepository outboxMessageRepository,
                              PayMqProducer payMqProducer,
                              PayMqProperties payMqProperties,
-                             ObjectMapper objectMapper,
                              AlertService alertService,
                              PayMqProduceMetrics produceMetrics,
                              @Value("${pay.outbox.dispatch-batch-size:200}") int batchSize) {
         this.outboxMessageRepository = outboxMessageRepository; // 仓储
         this.payMqProducer = payMqProducer; // 生产者
         this.payMqProperties = payMqProperties; // 配置
-        this.objectMapper = objectMapper; // JSON
         this.alertService = alertService; // 告警
         this.produceMetrics = produceMetrics; // 指标
         this.batchSize = batchSize; // 批量大小
@@ -58,12 +56,14 @@ public class OutboxDispatchJob {
         if (!payMqProperties.isOutboxViaMq()) { // 未走 MQ
             return; // 跳过
         }
-        List<OutboxMessageEntity> pending = outboxMessageRepository // 批量拉取
-                .findTopNByStatusOrderByCreateTimeAsc(0, batchSize);
+        int perShard = ShardScanSupport.perShardLimit(batchSize);
+        List<OutboxMessageEntity> pending = new ArrayList<>();
+        ShardScanSupport.forEachShard(shardId -> pending.addAll(
+                outboxMessageRepository.findTopNByStatusAndShardIdOrderByCreateTimeAsc(0, shardId, perShard)));
         int failCount = 0; // 本批失败计数
         for (OutboxMessageEntity msg : pending) { // 逐条发送
             try { // 发送
-                String hashKey = resolveMerchantId(msg.payload); // 从 payload 取 merchantId 作为 hashKey
+                String hashKey = msg.merchantId != null ? msg.merchantId.toString() : msg.bizKey;
                 payMqProducer.sendOrderly(msg.topic, MqTags.CREDIT, hashKey, msg.payload); // 有序发送
                 msg.status = 1; // 已发送
                 outboxMessageRepository.save(msg); // 更新状态
@@ -78,14 +78,5 @@ public class OutboxDispatchJob {
             alertService.send(AlertService.MQ_BACKLOG, AlertService.LEVEL_WARN, // 预警
                     "outbox dispatch batch failures=" + failCount); // 内容
         }
-    }
-
-    /** 从 settle_amount JSON 载荷解析 merchantId */
-    private String resolveMerchantId(String payload) throws Exception {
-        JsonNode node = objectMapper.readTree(payload); // 解析 JSON
-        if (node.has("merchantId")) { // 标准字段
-            return node.get("merchantId").asText(); // 返回字符串形式 merchantId
-        }
-        return node.has("billNo") ? node.get("billNo").asText() : "0"; // 兜底 billNo
     }
 }

@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.payment.domain.entity.OutboxMessageEntity;
 import com.payment.domain.mapper.OutboxMessageMapper;
 import com.payment.domain.repository.OutboxMessageRepository;
+import com.payment.domain.service.ShardRouteService;
 import com.payment.domain.support.MapperHelper;
+import com.payment.domain.support.ShardQueryHelper;
 import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
@@ -15,9 +17,12 @@ import java.util.List;
 public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
 
     private final OutboxMessageMapper outboxMessageMapper;
+    private final ShardRouteService shardRouteService;
 
-    public OutboxMessageRepositoryImpl(OutboxMessageMapper outboxMessageMapper) {
+    public OutboxMessageRepositoryImpl(OutboxMessageMapper outboxMessageMapper,
+                                       ShardRouteService shardRouteService) {
         this.outboxMessageMapper = outboxMessageMapper;
+        this.shardRouteService = shardRouteService;
     }
 
     @Override
@@ -34,6 +39,17 @@ public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
     public List<OutboxMessageEntity> findTopNByStatusOrderByCreateTimeAsc(Integer status, int limit) {
         return outboxMessageMapper.selectList(new QueryWrapper<OutboxMessageEntity>()
                 .eq("status", status)
+                .orderByAsc("create_time")
+                .last("LIMIT " + limit));
+    }
+
+    @Override
+    public List<OutboxMessageEntity> findTopNByStatusAndShardIdOrderByCreateTimeAsc(
+            Integer status, int shardId, int limit) {
+        QueryWrapper<OutboxMessageEntity> wrapper = new QueryWrapper<OutboxMessageEntity>()
+                .eq("status", status);
+        ShardQueryHelper.eqShardId(wrapper, shardId);
+        return outboxMessageMapper.selectList(wrapper
                 .orderByAsc("create_time")
                 .last("LIMIT " + limit));
     }
@@ -58,7 +74,8 @@ public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
 
     @Override
     public boolean existsByBizKey(String bizKey) {
-        return outboxMessageMapper.selectCount(new QueryWrapper<OutboxMessageEntity>()
-                .eq("biz_key", bizKey)) > 0;
+        QueryWrapper<OutboxMessageEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.byBillNo(wrapper, bizKey, shardRouteService);
+        return outboxMessageMapper.selectCount(wrapper) > 0;
     }
 }

@@ -9,6 +9,7 @@ import com.payment.domain.repository.ClearanceTaskRepository; // 任务仓储
 import com.payment.domain.repository.FeeCalcResultRepository; // 计费仓储
 import com.payment.domain.repository.OutboxMessageRepository; // Outbox 仓储
 import com.payment.domain.repository.SplitDetailRepository; // 分账仓储
+import com.payment.domain.support.ShardScanSupport;
 import org.slf4j.Logger; // 日志
 import org.slf4j.LoggerFactory; // 日志工厂
 import org.springframework.scheduling.annotation.Scheduled; // 定时
@@ -16,18 +17,21 @@ import org.springframework.stereotype.Component; // 组件
 
 import java.math.BigDecimal; // 金额
 import java.time.LocalDateTime; // 时间
+import java.util.ArrayList;
 import java.util.HashMap; // 载荷 Map
 import java.util.List; // 列表
 import java.util.Map; // Map
 
 /**
  * 补偿 Job：有 split_detail 但缺少 outbox_message 时补写 Outbox（EX-0207 场景）。
+ * 按 16 分片扫描 clearance_task。
  */
 @Component // 注册 Bean
 public class OutboxCompensateJob {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxCompensateJob.class); // 日志
     private static final String SETTLE_TOPIC = "settle_amount_topic"; // 结算 Topic
+    private static final int SCAN_PER_SHARD = 100;
 
     private final ClearanceTaskRepository clearanceTaskRepository; // 任务
     private final FeeCalcResultRepository feeCalcResultRepository; // 计费结果
@@ -51,8 +55,10 @@ public class OutboxCompensateJob {
     /** 定时扫描并补 Outbox */
     @Scheduled(fixedDelayString = "${pay.compensate.outbox-interval-ms:600000}") // 默认 10 分钟
     public void compensateMissingOutbox() {
-        List<ClearanceTaskEntity> candidates = clearanceTaskRepository // 成功或失败但有 split 的任务
-                .findByStatusOrderByCreateTimeAsc(TaskStatus.SUCCESS.getCode());
+        List<ClearanceTaskEntity> candidates = new ArrayList<>();
+        ShardScanSupport.forEachShard(shardId -> candidates.addAll(
+                clearanceTaskRepository.findByStatusAndShardIdOrderByCreateTimeAsc(
+                        TaskStatus.SUCCESS.getCode(), shardId, SCAN_PER_SHARD)));
         for (ClearanceTaskEntity task : candidates) { // 遍历
             compensateOne(task.billNo); // 尝试补偿单条
         }

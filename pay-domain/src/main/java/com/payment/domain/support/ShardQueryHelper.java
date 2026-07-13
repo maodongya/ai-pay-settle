@@ -1,6 +1,7 @@
 package com.payment.domain.support;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.payment.common.shard.ShardConstants;
 import com.payment.domain.service.ShardRouteService;
 
 import java.util.Optional;
@@ -34,5 +35,10 @@ public final class ShardQueryHelper {
             merchantIdConsumer.accept(merchantId);
         });
         return wrapper.eq("bill_no", billNo);
+    }
+
+    /** 按 merchant_id 取模过滤分片（Job 扫描无 shard_id 列的表时使用） */
+    public static <T> QueryWrapper<T> eqShardId(QueryWrapper<T> wrapper, int shardId) {
+        return wrapper.apply("MOD(merchant_id, {0}) = {1}", ShardConstants.SHARD_COUNT, shardId);
     }
 }

@@ -47,4 +47,13 @@ public class TradeBillRepositoryImpl implements TradeBillRepository {
     public List<TradeBillEntity> findByStatus(Integer status) {
         return tradeBillMapper.selectList(new QueryWrapper<TradeBillEntity>().eq("status", status));
     }
+
+    @Override
+    public List<TradeBillEntity> findRecentByShardId(int shardId, int limit) {
+        QueryWrapper<TradeBillEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.eqShardId(wrapper, shardId);
+        return tradeBillMapper.selectList(wrapper
+                .orderByDesc("create_time")
+                .last("LIMIT " + limit));
+    }
 }

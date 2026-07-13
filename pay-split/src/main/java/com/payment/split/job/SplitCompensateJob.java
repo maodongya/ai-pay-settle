@@ -8,20 +8,23 @@ import com.payment.domain.repository.FeeCalcResultRepository; // 费用计算结
 import com.payment.domain.repository.SplitDetailRepository; // 分账明细仓储
 import com.payment.split.support.SplitCompensateSupport; // 分账补偿支持
 import com.payment.common.enums.TaskStatus; // 任务状态枚举
+import com.payment.domain.support.ShardScanSupport;
 import org.slf4j.Logger; // 日志接口
 import org.slf4j.LoggerFactory; // 日志工厂
 import org.springframework.scheduling.annotation.Scheduled; // 定时任务注解
 import org.springframework.stereotype.Component; // Spring 组件注解
 
+import java.util.ArrayList;
 import java.util.List; // 列表
 
 /**
- * 分账补偿定时任务，为失败但已有计费结果的任务补录分账。
+ * 分账补偿定时任务，为失败但已有计费结果的任务补录分账（16 分片并行扫描）。
  */
 @Component // 注册为 Spring 组件
 public class SplitCompensateJob {
 
     private static final Logger log = LoggerFactory.getLogger(SplitCompensateJob.class); // 日志记录器
+    private static final int SCAN_PER_SHARD = 100;
 
     private final ClearanceTaskRepository clearanceTaskRepository; // 清算任务仓储
     private final FeeCalcResultRepository feeCalcResultRepository; // 费用计算结果仓储
@@ -46,7 +49,10 @@ public class SplitCompensateJob {
      */
     @Scheduled(fixedDelayString = "${pay.compensate.split-interval-ms:600000}") // 默认每 10 分钟执行
     public void compensate() {
-        List<ClearanceTaskEntity> failed = clearanceTaskRepository.findByStatusOrderByCreateTimeAsc(TaskStatus.FAILED.getCode()); // 查询失败任务
+        List<ClearanceTaskEntity> failed = new ArrayList<>();
+        ShardScanSupport.forEachShard(shardId -> failed.addAll(
+                clearanceTaskRepository.findByStatusAndShardIdOrderByCreateTimeAsc(
+                        TaskStatus.FAILED.getCode(), shardId, SCAN_PER_SHARD)));
         for (ClearanceTaskEntity task : failed) { // 逐个处理
             if (splitDetailRepository.existsByBillNo(task.billNo)) { // 分账已存在
                 continue; // 跳过

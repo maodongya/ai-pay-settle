@@ -17,4 +17,7 @@ public interface TradeBillRepository {
     List<TradeBillEntity> findByStatusAndOriginBillNo(Integer status, String originBillNo);
 
     List<TradeBillEntity> findByStatus(Integer status);
+
+    /** 按分片查询最近单据（路由补偿 Job） */
+    List<TradeBillEntity> findRecentByShardId(int shardId, int limit);
 }

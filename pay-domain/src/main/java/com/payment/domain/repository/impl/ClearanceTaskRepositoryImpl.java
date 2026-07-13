@@ -46,9 +46,18 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
     }
 
     @Override
+    public List<ClearanceTaskEntity> findByStatusAndShardIdOrderByCreateTimeAsc(Integer status, int shardId, int limit) {
+        return clearanceTaskMapper.selectList(new QueryWrapper<ClearanceTaskEntity>()
+                .eq("status", status)
+                .eq("shard_id", shardId)
+                .orderByAsc("create_time")
+                .last("LIMIT " + limit));
+    }
+
+    @Override
     @Transactional
-    public int claimTask(String billNo, Integer expectedStatus, Integer newStatus, LocalDateTime now) {
-        return clearanceTaskMapper.claimTask(billNo, expectedStatus, newStatus, now);
+    public int claimTask(String billNo, Long merchantId, Integer expectedStatus, Integer newStatus, LocalDateTime now) {
+        return clearanceTaskMapper.claimTask(billNo, merchantId, expectedStatus, newStatus, now);
     }
 
     @Override
@@ -66,6 +75,16 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
     }
 
     @Override
+    public List<ClearanceTaskEntity> findByStatusAndShardIdAndUpdateTimeBefore(
+            Integer status, int shardId, LocalDateTime before, int limit) {
+        return clearanceTaskMapper.selectList(new QueryWrapper<ClearanceTaskEntity>()
+                .eq("status", status)
+                .eq("shard_id", shardId)
+                .lt("update_time", before)
+                .last("LIMIT " + limit));
+    }
+
+    @Override
     public long countByStatus(Integer status) {
         return clearanceTaskMapper.selectCount(new QueryWrapper<ClearanceTaskEntity>()
                 .eq("status", status));
@@ -78,5 +97,17 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
                 .lt("retry_count", maxRetry)
                 .and(w -> w.isNull("next_retry_time").or().le("next_retry_time", now))
                 .orderByAsc("create_time"));
+    }
+
+    @Override
+    public List<ClearanceTaskEntity> findFailedReadyForRetryByShard(
+            Integer status, Integer maxRetry, LocalDateTime now, int shardId, int limit) {
+        return clearanceTaskMapper.selectList(new QueryWrapper<ClearanceTaskEntity>()
+                .eq("status", status)
+                .eq("shard_id", shardId)
+                .lt("retry_count", maxRetry)
+                .and(w -> w.isNull("next_retry_time").or().le("next_retry_time", now))
+                .orderByAsc("create_time")
+                .last("LIMIT " + limit));
     }
 }

@@ -20,6 +20,11 @@ public interface ClearanceTaskService {
     void executeTask(String billNo);
 
     /**
+     * 执行清分任务（携带 merchantId 精准路由，MQ 消费推荐）
+     */
+    void executeTask(String billNo, Long merchantId);
+
+    /**
      * 重试失败的清分任务
      *
      * @param limit 最大重试数量
