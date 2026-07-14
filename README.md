@@ -33,6 +33,44 @@ AI 生成代码 → 02 + 04/05/06 + 07 + 09 补偿 Job
 上游（交易/支付） → 清算（接入→算账→计费→清分→账务） → 结算（中间户→出款） → 下游（ERP/银行）
 ```
 
+## Maven 模块说明
+
+每个模块目录下有 `README.md`，描述职责与主数据流。
+
+| 模块 | 职责摘要 | 文档 |
+|------|----------|------|
+| pay-common | 枚举、异常、分片工具、指标 | [README](pay-common/README.md) |
+| pay-api | Service/DTO 契约（无实现） | [README](pay-api/README.md) |
+| pay-domain | Entity/Mapper/Repository、分片路由 | [README](pay-domain/README.md) |
+| pay-mq | MQ Producer/消费基础设施、积压熔断 | [README](pay-mq/README.md) |
+| pay-access | HTTP/MQ 接入落单、触发清算 | [README](pay-access/README.md) |
+| pay-calc | 清算编排（计费→清分） | [README](pay-calc/README.md) |
+| pay-fee | 计费引擎与规则匹配 | [README](pay-fee/README.md) |
+| pay-split | 分账/凭证/Outbox 投递 | [README](pay-split/README.md) |
+| pay-settlement | 中间户入账、提现、T+1、对账 | [README](pay-settlement/README.md) |
+| pay-control | 商户校验、规则管理、告警工单 | [README](pay-control/README.md) |
+| pay-app | Spring Boot 启动与配置聚合 | [README](pay-app/README.md) |
+| pay-test | HTTP/MQ 压测工具 | [README](pay-test/README.md) |
+
+```mermaid
+flowchart LR
+  Access[pay-access] --> Calc[pay-calc]
+  Calc --> Fee[pay-fee]
+  Calc --> Split[pay-split]
+  Split --> Settle[pay-settlement]
+  Access -.契约.-> API[pay-api]
+  Calc -.契约.-> API
+  Domain[pay-domain] --- Access
+  Domain --- Calc
+  Domain --- Split
+  Domain --- Settle
+  MQ[pay-mq] --- Access
+  MQ --- Calc
+  MQ --- Split
+  MQ --- Settle
+  App[pay-app] --- Access
+```
+
 ## 核心能力
 
 - 全渠道交易单据统一接入清算（收款、退款、充值、奖惩、分账等 8 类）
