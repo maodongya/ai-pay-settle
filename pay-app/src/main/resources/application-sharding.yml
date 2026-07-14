@@ -72,6 +72,7 @@ pay:
       check-interval-ms: 120000
     consumer:
       # 30~100 TPS 分片联调足够；过高会打满内层 Hikari 池
+      # 由 RocketMQPushConsumerLifecycleListener 同时设置 min=max
       access-thread-max: 8
       calc-thread-max: 8
       settlement-thread-max: 8
@@ -79,3 +80,6 @@ pay:
   outbox:
     dispatch-interval-ms: 3000
     dispatch-batch-size: 50
+  loadtest:
+    # 压测时设 true，暂停补偿/重试 Job，降低与热路径的锁争用
+    pause-jobs: false

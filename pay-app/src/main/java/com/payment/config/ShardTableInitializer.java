@@ -84,6 +84,11 @@ public class ShardTableInitializer implements InitializingBean {
         for (long merchantId = 10001L; merchantId <= 10100L; merchantId++) {
             seedSettleAccount(merchantId, "6222" + String.format("%012d", merchantId), 2);
         }
+        // 压测003：1000001~1001000，settle_mode 按 (id-1000001)%5+1 轮转
+        for (long merchantId = 1000001L; merchantId <= 1001000L; merchantId++) {
+            int settleMode = (int) ((merchantId - 1000001L) % 5) + 1;
+            seedSettleAccount(merchantId, "6222" + String.format("%012d", merchantId), settleMode);
+        }
     }
 
     private void seedSettleAccount(long merchantId, String cardNo, int settleMode) throws Exception {

@@ -4,7 +4,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties; // �
 
 /**
  * RocketMQ 消费者统一线程与拉取参数配置。
- * 注解 {@link RocketMQMessageListener} 要求编译期常量，因此 yml 与本类默认值需手动保持一致。
+ * Listener 通过 {@code RocketMQPushConsumerLifecycleListener#prepareStart} 读取本配置，
+ * 同时设置 consumeThreadMin/Max（覆盖注解默认 min=20）。
  */
 @ConfigurationProperties(prefix = "pay.mq.consumer") // 绑定 pay.mq.consumer.* 配置项
 public class MqConsumerProperties {

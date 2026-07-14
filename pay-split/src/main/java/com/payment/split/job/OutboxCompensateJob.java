@@ -12,6 +12,7 @@ import com.payment.domain.repository.SplitDetailRepository; // 分账仓储
 import com.payment.domain.support.ShardScanSupport;
 import org.slf4j.Logger; // 日志
 import org.slf4j.LoggerFactory; // 日志工厂
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled; // 定时
 import org.springframework.stereotype.Component; // 组件
 
@@ -38,23 +39,29 @@ public class OutboxCompensateJob {
     private final SplitDetailRepository splitDetailRepository; // 分账
     private final OutboxMessageRepository outboxMessageRepository; // Outbox
     private final ObjectMapper objectMapper; // JSON
+    private final boolean pauseJobs;
 
     /** 构造注入 */
     public OutboxCompensateJob(ClearanceTaskRepository clearanceTaskRepository,
                                FeeCalcResultRepository feeCalcResultRepository,
                                SplitDetailRepository splitDetailRepository,
                                OutboxMessageRepository outboxMessageRepository,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               @Value("${pay.loadtest.pause-jobs:false}") boolean pauseJobs) {
         this.clearanceTaskRepository = clearanceTaskRepository; // 任务仓储
         this.feeCalcResultRepository = feeCalcResultRepository; // 计费仓储
         this.splitDetailRepository = splitDetailRepository; // 分账仓储
         this.outboxMessageRepository = outboxMessageRepository; // Outbox 仓储
         this.objectMapper = objectMapper; // JSON
+        this.pauseJobs = pauseJobs;
     }
 
     /** 定时扫描并补 Outbox */
     @Scheduled(fixedDelayString = "${pay.compensate.outbox-interval-ms:600000}") // 默认 10 分钟
     public void compensateMissingOutbox() {
+        if (pauseJobs) {
+            return;
+        }
         List<ClearanceTaskEntity> candidates = new ArrayList<>();
         ShardScanSupport.forEachShard(shardId -> candidates.addAll(
                 clearanceTaskRepository.findByStatusAndShardIdOrderByCreateTimeAsc(

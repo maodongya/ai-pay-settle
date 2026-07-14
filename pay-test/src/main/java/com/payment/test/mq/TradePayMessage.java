@@ -29,8 +29,14 @@ public class TradePayMessage {
         // 带毫秒前缀，避免多轮压测 bill_no 撞幂等
         msg.billNo = "MQ" + System.currentTimeMillis() + "-" + clientId + "-" + seq;
         msg.merchantId = config.resolveMerchantId(seq);
-        msg.agentId = config.agentId;
-        msg.secondAgentId = config.secondAgentId;
+        // 区间压测时由 DB agent_merchant_relation 驱动分润；消息不填代理避免覆盖「无代理」场景
+        if (config.merchantIdStart > 0 && config.merchantIdEnd >= config.merchantIdStart) {
+            msg.agentId = null;
+            msg.secondAgentId = null;
+        } else {
+            msg.agentId = config.agentId;
+            msg.secondAgentId = config.secondAgentId;
+        }
         msg.orderNo = "OD" + msg.billNo;
         msg.tradeAmount = config.tradeAmount;
         msg.payTime = OffsetDateTime.now(ZoneOffset.ofHours(8)).toString();

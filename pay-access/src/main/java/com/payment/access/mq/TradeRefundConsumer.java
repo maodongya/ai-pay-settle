@@ -8,10 +8,14 @@ import com.payment.mq.MqConsumerGroups; // Group
 import com.payment.mq.MqMessageHandler; // Handler 接口
 import com.payment.mq.MqTags; // REFUND Tag
 import com.payment.mq.MqTopics; // Topic
+import com.payment.mq.config.MqConsumerProperties;
+import com.payment.mq.support.MqConsumerThreadSupport;
 import com.payment.mq.support.MqListenerInvoker; // Invoker
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.spring.annotation.ConsumeMode; // 消费模式
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener; // 注解
 import org.apache.rocketmq.spring.core.RocketMQListener; // 接口
+import org.apache.rocketmq.spring.core.RocketMQPushConsumerLifecycleListener;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty; // 条件
 import org.springframework.context.annotation.Lazy; // 延迟注入
 import org.springframework.stereotype.Component; // 组件
@@ -47,24 +51,33 @@ public class TradeRefundConsumer implements MqMessageHandler {
         }
     }
 
-    /** RocketMQ Listener */
+    /** RocketMQ Listener（独立 Group，避免与 PAY 同组双订阅） */
     @Component // Listener
     @ConditionalOnProperty(name = "pay.mq.enabled", havingValue = "true") // MQ 开
     @RocketMQMessageListener( // 注解
             topic = MqTopics.TRADE_REFUND, // Topic
             selectorExpression = MqTags.REFUND, // Tag
-            consumerGroup = MqConsumerGroups.ACCESS, // 与 PAY 同 Group
+            consumerGroup = MqConsumerGroups.ACCESS_REFUND,
             consumeMode = ConsumeMode.CONCURRENTLY, // 并发
-            consumeThreadMax = 20) // 本地分片联调降并发
-    public static class RefundRocketListener implements RocketMQListener<String> {
+            consumeThreadMax = 20,
+            consumeThreadNumber = 20)
+    public static class RefundRocketListener implements RocketMQListener<String>, RocketMQPushConsumerLifecycleListener {
 
         private final TradeRefundConsumer delegate; // Handler
         private final MqListenerInvoker invoker; // Invoker
+        private final MqConsumerProperties consumerProperties;
 
         /** 构造 */
-        public RefundRocketListener(TradeRefundConsumer delegate, MqListenerInvoker invoker) {
+        public RefundRocketListener(TradeRefundConsumer delegate, MqListenerInvoker invoker,
+                                    MqConsumerProperties consumerProperties) {
             this.delegate = delegate; // Handler
             this.invoker = invoker; // Invoker
+            this.consumerProperties = consumerProperties;
+        }
+
+        @Override
+        public void prepareStart(DefaultMQPushConsumer consumer) {
+            MqConsumerThreadSupport.apply(consumer, consumerProperties.getAccessThreadMax(), "access-refund");
         }
 
         @Override // 消息回调

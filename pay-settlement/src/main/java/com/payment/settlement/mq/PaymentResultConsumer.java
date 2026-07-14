@@ -6,10 +6,14 @@ import com.payment.api.service.SettleAccountService; // 结算服务
 import com.payment.mq.MqConsumerGroups; // Group
 import com.payment.mq.MqMessageHandler; // Handler
 import com.payment.mq.MqTopics; // Topic
+import com.payment.mq.config.MqConsumerProperties;
+import com.payment.mq.support.MqConsumerThreadSupport;
 import com.payment.mq.support.MqListenerInvoker; // Invoker
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.spring.annotation.ConsumeMode; // 模式
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener; // 注解
 import org.apache.rocketmq.spring.core.RocketMQListener; // 接口
+import org.apache.rocketmq.spring.core.RocketMQPushConsumerLifecycleListener;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty; // 条件
 import org.springframework.context.annotation.Lazy; // 延迟
 import org.springframework.stereotype.Component; // 组件
@@ -51,16 +55,25 @@ public class PaymentResultConsumer implements MqMessageHandler {
             topic = MqTopics.PAYMENT_RESULT, // Topic
             consumerGroup = MqConsumerGroups.SETTLEMENT + "-payment", // 独立 Group
             consumeMode = ConsumeMode.CONCURRENTLY, // 并发
-            consumeThreadMax = 20) // RocketMQ 默认 min=20，max 须 >= 20
-    public static class RocketListener implements RocketMQListener<String> {
+            consumeThreadMax = 20,
+            consumeThreadNumber = 20)
+    public static class RocketListener implements RocketMQListener<String>, RocketMQPushConsumerLifecycleListener {
 
         private final PaymentResultConsumer delegate; // Handler
         private final MqListenerInvoker invoker; // Invoker
+        private final MqConsumerProperties consumerProperties;
 
         /** 构造 */
-        public RocketListener(PaymentResultConsumer delegate, MqListenerInvoker invoker) {
+        public RocketListener(PaymentResultConsumer delegate, MqListenerInvoker invoker,
+                              MqConsumerProperties consumerProperties) {
             this.delegate = delegate; // Handler
             this.invoker = invoker; // Invoker
+            this.consumerProperties = consumerProperties;
+        }
+
+        @Override
+        public void prepareStart(DefaultMQPushConsumer consumer) {
+            MqConsumerThreadSupport.apply(consumer, consumerProperties.getSettlementPaymentThreadMax(), "settlement-payment");
         }
 
         @Override // 回调

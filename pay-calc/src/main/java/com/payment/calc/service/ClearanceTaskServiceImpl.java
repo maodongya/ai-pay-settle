@@ -40,6 +40,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
 
     private static final Logger log = LoggerFactory.getLogger(ClearanceTaskServiceImpl.class); // 日志记录器
     private static final int MAX_RETRY = 5; // 最大业务重试次数（L2）
+    /** error_msg 列 VARCHAR(512)，预留余量避免 Data too long */
+    private static final int ERROR_MSG_MAX = 500;
 
     private final ClearanceTaskRepository clearanceTaskRepository; // 清算任务仓储
     private final TradeBillRepository tradeBillRepository; // 交易账单仓储
@@ -120,7 +122,14 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             return; // 结束
         }
 
-        TradeBillEntity bill = tradeBillRepository.findByBillNo(billNo).orElseThrow(); // 查询账单
+        Optional<TradeBillEntity> billOpt = tradeBillRepository.findByBillNo(billNo);
+        if (billOpt.isEmpty()) {
+            // 同事务内标 DEAD 后直接返回（ACK），避免抛异常导致事务回滚、任务卡在 PENDING
+            markTaskDead(billNo, "trade bill not found");
+            log.error("clearance skip missing bill billNo={}", billNo);
+            return;
+        }
+        TradeBillEntity bill = billOpt.get();
         bill.status = BillStatus.CLEARING.getCode(); // 更新为清算中
         tradeBillRepository.save(bill); // 保存账单
 
@@ -157,12 +166,14 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             businessMetrics.recordThroughput(PayBusinessMetrics.STAGE_CLEARANCE_DONE, true);
 
             activateWaitingRefunds(billNo); // 异步激活等待原单的退款
+        } catch (NonRetryableException e) {
+            throw e;
         } catch (Exception e) { // 清算失败
             log.error("clearance failed billNo={}", billNo, e); // 记录错误日志
             ClearanceTaskEntity task = clearanceTaskRepository.findByBillNo(billNo).orElseThrow(); // 查询任务
             task.status = TaskStatus.FAILED.getCode(); // 更新为失败
             task.retryCount = task.retryCount + 1; // 重试次数加一
-            task.errorMsg = e.getMessage(); // 记录错误信息
+            task.errorMsg = truncateError(e.getMessage()); // 记录错误信息（截断）
             task.nextRetryTime = LocalDateTime.now().plus(backoffDuration(task.retryCount)); // 指数退避
             if (task.retryCount >= MAX_RETRY) { // 超过最大重试
                 task.status = TaskStatus.DEAD.getCode(); // 标记为死信
@@ -175,6 +186,23 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             bill.status = BillStatus.FAILED.getCode(); // 账单标记失败
             tradeBillRepository.save(bill); // 保存账单
         }
+    }
+
+    private void markTaskDead(String billNo, String reason) {
+        clearanceTaskRepository.findByBillNo(billNo).ifPresent(task -> {
+            task.status = TaskStatus.DEAD.getCode();
+            task.errorMsg = truncateError(reason);
+            task.nextRetryTime = null;
+            clearanceTaskRepository.save(task);
+            exceptionRecordService.openClearanceDead(billNo, task.errorMsg);
+        });
+    }
+
+    private static String truncateError(String msg) {
+        if (msg == null) {
+            return null;
+        }
+        return msg.length() <= ERROR_MSG_MAX ? msg : msg.substring(0, ERROR_MSG_MAX);
     }
 
     /**

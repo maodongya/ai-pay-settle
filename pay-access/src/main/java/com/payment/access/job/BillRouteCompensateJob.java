@@ -6,6 +6,7 @@ import com.payment.domain.service.ShardRouteService;
 import com.payment.domain.support.ShardScanSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -20,15 +21,21 @@ public class BillRouteCompensateJob {
 
     private final TradeBillRepository tradeBillRepository;
     private final ShardRouteService shardRouteService;
+    private final boolean pauseJobs;
 
     public BillRouteCompensateJob(TradeBillRepository tradeBillRepository,
-                                  ShardRouteService shardRouteService) {
+                                  ShardRouteService shardRouteService,
+                                  @Value("${pay.loadtest.pause-jobs:false}") boolean pauseJobs) {
         this.tradeBillRepository = tradeBillRepository;
         this.shardRouteService = shardRouteService;
+        this.pauseJobs = pauseJobs;
     }
 
     @Scheduled(fixedDelayString = "${pay.compensate.bill-route-interval-ms:600000}")
     public void compensateMissingRoutes() {
+        if (pauseJobs) {
+            return;
+        }
         int compensated = 0;
         for (int shardId = 0; shardId < com.payment.common.shard.ShardConstants.SHARD_COUNT; shardId++) {
             compensated += compensateShard(shardId);

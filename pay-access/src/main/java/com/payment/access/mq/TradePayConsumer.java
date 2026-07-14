@@ -7,10 +7,14 @@ import com.payment.mq.MqConsumerGroups; // Consumer Group
 import com.payment.mq.MqMessageHandler; // Local 模式 Handler 接口
 import com.payment.mq.MqTags; // PAY Tag
 import com.payment.mq.MqTopics; // trade_pay Topic
+import com.payment.mq.config.MqConsumerProperties;
+import com.payment.mq.support.MqConsumerThreadSupport;
 import com.payment.mq.support.MqListenerInvoker; // 统一 Listener 代理
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.spring.annotation.ConsumeMode; // 并发/有序模式
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener; // Listener 注解
 import org.apache.rocketmq.spring.core.RocketMQListener; // 回调接口
+import org.apache.rocketmq.spring.core.RocketMQPushConsumerLifecycleListener;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty; // 条件装配
 import org.springframework.context.annotation.Lazy; // 延迟注入破循环
 import org.springframework.stereotype.Component; // 组件
@@ -46,7 +50,7 @@ public class TradePayConsumer implements MqMessageHandler {
     }
 
     /**
-     * RocketMQ 模式 Listener（consumeThreadMax=32 与 pay.mq.consumer.access-thread-max 同步）。
+     * RocketMQ 模式 Listener；线程数由 {@link MqConsumerProperties#getAccessThreadMax()} 在 prepareStart 生效。
      */
     @Component // 嵌套 Listener Bean
     @ConditionalOnProperty(name = "pay.mq.enabled", havingValue = "true") // 仅 RocketMQ
@@ -55,16 +59,25 @@ public class TradePayConsumer implements MqMessageHandler {
             selectorExpression = MqTags.PAY, // Tag 过滤
             consumerGroup = MqConsumerGroups.ACCESS, // Group
             consumeMode = ConsumeMode.CONCURRENTLY, // 并发消费
-            consumeThreadMax = 20) // 本地分片联调降并发，减轻连接池压力
-    public static class PayRocketListener implements RocketMQListener<String> {
+            consumeThreadMax = 20,
+            consumeThreadNumber = 20)
+    public static class PayRocketListener implements RocketMQListener<String>, RocketMQPushConsumerLifecycleListener {
 
         private final TradePayConsumer delegate; // 业务 Handler
         private final MqListenerInvoker invoker; // 异常分类 + 指标
+        private final MqConsumerProperties consumerProperties;
 
         /** 构造注入 */
-        public PayRocketListener(TradePayConsumer delegate, MqListenerInvoker invoker) {
+        public PayRocketListener(TradePayConsumer delegate, MqListenerInvoker invoker,
+                                 MqConsumerProperties consumerProperties) {
             this.delegate = delegate; // Handler
             this.invoker = invoker; // Invoker
+            this.consumerProperties = consumerProperties;
+        }
+
+        @Override
+        public void prepareStart(DefaultMQPushConsumer consumer) {
+            MqConsumerThreadSupport.apply(consumer, consumerProperties.getAccessThreadMax(), "access-pay");
         }
 
         @Override // 收到消息

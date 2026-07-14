@@ -11,6 +11,7 @@ import com.payment.common.enums.TaskStatus; // 任务状态枚举
 import com.payment.domain.support.ShardScanSupport;
 import org.slf4j.Logger; // 日志接口
 import org.slf4j.LoggerFactory; // 日志工厂
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled; // 定时任务注解
 import org.springframework.stereotype.Component; // Spring 组件注解
 
@@ -30,6 +31,7 @@ public class SplitCompensateJob {
     private final FeeCalcResultRepository feeCalcResultRepository; // 费用计算结果仓储
     private final SplitDetailRepository splitDetailRepository; // 分账明细仓储
     private final SplitCompensateSupport splitCompensateSupport; // 分账补偿支持
+    private final boolean pauseJobs;
 
     /**
      * 构造注入依赖。
@@ -37,11 +39,13 @@ public class SplitCompensateJob {
     public SplitCompensateJob(ClearanceTaskRepository clearanceTaskRepository,
                               FeeCalcResultRepository feeCalcResultRepository,
                               SplitDetailRepository splitDetailRepository,
-                              SplitCompensateSupport splitCompensateSupport) {
+                              SplitCompensateSupport splitCompensateSupport,
+                              @Value("${pay.loadtest.pause-jobs:false}") boolean pauseJobs) {
         this.clearanceTaskRepository = clearanceTaskRepository; // 赋值任务仓储
         this.feeCalcResultRepository = feeCalcResultRepository; // 赋值计费结果仓储
         this.splitDetailRepository = splitDetailRepository; // 赋值分账仓储
         this.splitCompensateSupport = splitCompensateSupport; // 赋值补偿支持
+        this.pauseJobs = pauseJobs;
     }
 
     /**
@@ -49,6 +53,9 @@ public class SplitCompensateJob {
      */
     @Scheduled(fixedDelayString = "${pay.compensate.split-interval-ms:600000}") // 默认每 10 分钟执行
     public void compensate() {
+        if (pauseJobs) {
+            return;
+        }
         List<ClearanceTaskEntity> failed = new ArrayList<>();
         ShardScanSupport.forEachShard(shardId -> failed.addAll(
                 clearanceTaskRepository.findByStatusAndShardIdOrderByCreateTimeAsc(
