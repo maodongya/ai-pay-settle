@@ -1,5 +1,6 @@
 package com.payment.fee.service; // 费用服务包
 
+import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.payment.api.dto.FeeCalcDTO; // 费用计算请求 DTO
 import com.payment.api.dto.FeeCalcResultDTO; // 费用计算结果 DTO
 import com.payment.api.service.FeeCalcService; // 费用计算服务接口
@@ -10,7 +11,6 @@ import com.payment.domain.repository.FeeCalcResultRepository; // 费用计算结
 import com.payment.domain.repository.FeeShareRuleRepository; // 分润规则仓储
 import com.payment.fee.engine.FeeCalcPipeline; // 费用计算流水线
 import org.springframework.stereotype.Service; // Spring 服务注解
-import org.springframework.transaction.annotation.Transactional; // 事务注解
 
 import java.math.BigDecimal; // 高精度数值
 import java.math.RoundingMode; // 舍入模式
@@ -42,7 +42,7 @@ public class FeeCalcServiceImpl implements FeeCalcService {
      * 计算正向交易分润费用，已存在则直接返回。
      */
     @Override // 实现接口方法
-    @Transactional // 开启事务
+    @DSTransactional
     public FeeCalcResultDTO calcShareFee(FeeCalcDTO request) {
         return feeCalcResultRepository.findByBillNo(request.billNo) // 按账单号查询已有结果
                 .map(this::toDto) // 存在则转为 DTO
@@ -58,7 +58,7 @@ public class FeeCalcServiceImpl implements FeeCalcService {
      * 计算退款分润费用，按原单比例等比冲减。
      */
     @Override // 实现接口方法
-    @Transactional // 开启事务
+    @DSTransactional
     public FeeCalcResultDTO calcRefundFee(String originBillNo, String refundBillNo, BigDecimal refundAmount) {
         return feeCalcResultRepository.findByBillNo(refundBillNo) // 按退款单号查询已有结果
                 .map(this::toDto) // 存在则转为 DTO

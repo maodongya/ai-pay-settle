@@ -1,4 +1,5 @@
 # ShardingSphere 5.5 — 4 库 × 4 表 = 16 分片，分片键 merchant_id
+# 表策略必须用 INLINE（显式 actualDataNodes 下禁止 MOD 等 auto 算法）
 databaseName: pay_data_sharding
 
 dataSources:
@@ -8,24 +9,32 @@ dataSources:
     jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_00?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: 123456
+    maximumPoolSize: 20
+    minimumIdle: 2
   ds_1:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
     jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_01?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: 123456
+    maximumPoolSize: 20
+    minimumIdle: 2
   ds_2:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
     jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_02?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: 123456
+    maximumPoolSize: 20
+    minimumIdle: 2
   ds_3:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
     jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_03?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: 123456
+    maximumPoolSize: 20
+    minimumIdle: 2
 
 rules:
   - !SHARDING
@@ -39,7 +48,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-trade-bill
       clearance_task:
         actualDataNodes: ds_${0..3}.clearance_task_${0..3}
         databaseStrategy:
@@ -49,7 +58,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-clearance-task
       fee_calc_result:
         actualDataNodes: ds_${0..3}.fee_calc_result_${0..3}
         databaseStrategy:
@@ -59,7 +68,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-fee-calc-result
       split_detail:
         actualDataNodes: ds_${0..3}.split_detail_${0..3}
         databaseStrategy:
@@ -69,7 +78,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-split-detail
       account_voucher:
         actualDataNodes: ds_${0..3}.account_voucher_${0..3}
         databaseStrategy:
@@ -79,7 +88,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-account-voucher
       outbox_message:
         actualDataNodes: ds_${0..3}.outbox_message_${0..3}
         databaseStrategy:
@@ -89,7 +98,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-outbox-message
       merchant_settle_account:
         actualDataNodes: ds_${0..3}.merchant_settle_account_${0..3}
         databaseStrategy:
@@ -99,7 +108,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-merchant-settle-account
       account_flow:
         actualDataNodes: ds_${0..3}.account_flow_${0..3}
         databaseStrategy:
@@ -109,7 +118,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-account-flow
       settlement_order:
         actualDataNodes: ds_${0..3}.settlement_order_${0..3}
         databaseStrategy:
@@ -119,7 +128,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-settlement-order
       withdraw_apply:
         actualDataNodes: ds_${0..3}.withdraw_apply_${0..3}
         databaseStrategy:
@@ -129,7 +138,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-withdraw-apply
       merchant_payable_suspend:
         actualDataNodes: ds_${0..3}.merchant_payable_suspend_${0..3}
         databaseStrategy:
@@ -139,7 +148,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-merchant-payable-suspend
       reconcile_bill:
         actualDataNodes: ds_${0..3}.reconcile_bill_${0..3}
         databaseStrategy:
@@ -149,7 +158,7 @@ rules:
         tableStrategy:
           standard:
             shardingColumn: merchant_id
-            shardingAlgorithmName: merchant-tbl-mod
+            shardingAlgorithmName: tbl-reconcile-bill
     bindingTables:
       - trade_bill,clearance_task,fee_calc_result,split_detail,account_voucher,outbox_message
       - merchant_settle_account,account_flow,settlement_order,withdraw_apply,merchant_payable_suspend,reconcile_bill
@@ -158,10 +167,54 @@ rules:
         type: INLINE
         props:
           algorithm-expression: ds_$->{(merchant_id % 16).intdiv(4)}
-      merchant-tbl-mod:
-        type: MOD
+      tbl-trade-bill:
+        type: INLINE
         props:
-          sharding-count: '4'
+          algorithm-expression: trade_bill_$->{(merchant_id % 16) % 4}
+      tbl-clearance-task:
+        type: INLINE
+        props:
+          algorithm-expression: clearance_task_$->{(merchant_id % 16) % 4}
+      tbl-fee-calc-result:
+        type: INLINE
+        props:
+          algorithm-expression: fee_calc_result_$->{(merchant_id % 16) % 4}
+      tbl-split-detail:
+        type: INLINE
+        props:
+          algorithm-expression: split_detail_$->{(merchant_id % 16) % 4}
+      tbl-account-voucher:
+        type: INLINE
+        props:
+          algorithm-expression: account_voucher_$->{(merchant_id % 16) % 4}
+      tbl-outbox-message:
+        type: INLINE
+        props:
+          algorithm-expression: outbox_message_$->{(merchant_id % 16) % 4}
+      tbl-merchant-settle-account:
+        type: INLINE
+        props:
+          algorithm-expression: merchant_settle_account_$->{(merchant_id % 16) % 4}
+      tbl-account-flow:
+        type: INLINE
+        props:
+          algorithm-expression: account_flow_$->{(merchant_id % 16) % 4}
+      tbl-settlement-order:
+        type: INLINE
+        props:
+          algorithm-expression: settlement_order_$->{(merchant_id % 16) % 4}
+      tbl-withdraw-apply:
+        type: INLINE
+        props:
+          algorithm-expression: withdraw_apply_$->{(merchant_id % 16) % 4}
+      tbl-merchant-payable-suspend:
+        type: INLINE
+        props:
+          algorithm-expression: merchant_payable_suspend_$->{(merchant_id % 16) % 4}
+      tbl-reconcile-bill:
+        type: INLINE
+        props:
+          algorithm-expression: reconcile_bill_$->{(merchant_id % 16) % 4}
 
 props:
   sql-show: false

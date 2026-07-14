@@ -3,7 +3,6 @@ package com.payment.split.job; // 分账/Outbox 定时任务包
 import com.payment.control.service.AlertService; // 告警
 import com.payment.domain.entity.OutboxMessageEntity; // Outbox 实体
 import com.payment.domain.repository.OutboxMessageRepository; // Outbox 仓储
-import com.payment.domain.support.ShardScanSupport;
 import com.payment.mq.MqTags; // CREDIT Tag
 import com.payment.mq.PayMqProducer; // 生产者
 import com.payment.mq.config.PayMqProperties; // MQ 开关
@@ -15,12 +14,10 @@ import org.springframework.scheduling.annotation.Scheduled; // 定时
 import org.springframework.stereotype.Component; // 组件
 import org.springframework.transaction.annotation.Transactional; // 事务
 
-import java.util.ArrayList;
 import java.util.List; // 列表
 
 /**
- * 发件箱消息派发：经 MQ 有序投递 settle_amount_topic（同 merchant 串行入账）。
- * 按 16 分片并行扫描，避免全库广播。
+ * 发件箱消息派发：经 MQ/Local 有序投递 settle_amount_topic（同 merchant 串行入账）。
  */
 @Component // Spring 组件
 public class OutboxDispatchJob {
@@ -56,22 +53,21 @@ public class OutboxDispatchJob {
         if (!payMqProperties.isOutboxViaMq()) { // 未走 MQ
             return; // 跳过
         }
-        int perShard = ShardScanSupport.perShardLimit(batchSize);
-        List<OutboxMessageEntity> pending = new ArrayList<>();
-        ShardScanSupport.forEachShard(shardId -> pending.addAll(
-                outboxMessageRepository.findTopNByStatusAndShardIdOrderByCreateTimeAsc(0, shardId, perShard)));
+        // 无分片键时 ShardingSphere 会广播；避免 MOD(merchant_id) 条件导致解析/连接放大
+        List<OutboxMessageEntity> pending = outboxMessageRepository
+                .findTopNByStatusOrderByCreateTimeAsc(0, batchSize);
         int failCount = 0; // 本批失败计数
         for (OutboxMessageEntity msg : pending) { // 逐条发送
             try { // 发送
                 String hashKey = msg.merchantId != null ? msg.merchantId.toString() : msg.bizKey;
                 payMqProducer.sendOrderly(msg.topic, MqTags.CREDIT, hashKey, msg.payload); // 有序发送
                 msg.status = 1; // 已发送
-                outboxMessageRepository.save(msg); // 更新状态
+                outboxMessageRepository.save(msg); // 更新状态（带 merchant_id 精准路由）
                 produceMetrics.recordOutboxDispatch(msg.topic, true);
             } catch (Exception e) { // 发送失败
                 failCount++; // 失败 +1
                 produceMetrics.recordOutboxDispatch(msg.topic, false);
-                log.warn("outbox dispatch failed id={}", msg.id, e); // 警告日志
+                log.warn("outbox dispatch failed id={} merchantId={}", msg.id, msg.merchantId, e); // 警告日志
             }
         }
         if (failCount > 0) { // 存在失败

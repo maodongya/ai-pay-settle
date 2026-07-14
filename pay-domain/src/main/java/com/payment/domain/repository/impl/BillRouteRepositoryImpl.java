@@ -1,13 +1,9 @@
 package com.payment.domain.repository.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.payment.domain.entity.BillRouteEntity;
 import com.payment.domain.mapper.BillRouteMapper;
 import com.payment.domain.repository.BillRouteRepository;
-import com.payment.domain.support.MapperHelper;
 import org.springframework.stereotype.Repository;
-
-import java.util.Optional;
 
 @Repository
 public class BillRouteRepositoryImpl implements BillRouteRepository {
@@ -20,11 +16,18 @@ public class BillRouteRepositoryImpl implements BillRouteRepository {
 
     @Override
     public BillRouteEntity save(BillRouteEntity entity) {
-        return MapperHelper.save(billRouteMapper, entity);
+        // bill_no 为业务主键（IdType.INPUT），已赋值时 MapperHelper 会误走 updateById
+        BillRouteEntity existing = billRouteMapper.selectById(entity.billNo);
+        if (existing == null) {
+            billRouteMapper.insert(entity);
+        } else {
+            billRouteMapper.updateById(entity);
+        }
+        return entity;
     }
 
     @Override
-    public Optional<BillRouteEntity> findByBillNo(String billNo) {
-        return Optional.ofNullable(billRouteMapper.selectById(billNo));
+    public java.util.Optional<BillRouteEntity> findByBillNo(String billNo) {
+        return java.util.Optional.ofNullable(billRouteMapper.selectById(billNo));
     }
 }

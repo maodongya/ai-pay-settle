@@ -1,5 +1,6 @@
 package com.payment.access.service; // 账单接入服务包
 
+import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.payment.common.metrics.PayBusinessMetrics;
 import com.payment.api.dto.TradeBillDTO; // 账单 DTO
 import com.payment.api.dto.ValidateResult; // 校验结果
@@ -16,7 +17,6 @@ import com.payment.domain.service.ShardRouteService;
 import com.payment.mq.config.PayMqProperties; // MQ 配置
 import com.payment.mq.support.MqBacklogState; // 积压熔断状态
 import org.springframework.stereotype.Service; // 服务注解
-import org.springframework.transaction.annotation.Transactional; // 事务
 
 import java.time.LocalDateTime; // 时间
 
@@ -58,7 +58,7 @@ public class BillAccessServiceImpl implements BillAccessService {
      * 提交交易账单，已存在则幂等返回。
      */
     @Override // 实现接口
-    @Transactional // 事务
+    @DSTransactional // config(bill_route) + data(trade_bill) 多数据源事务
     public TradeBillDTO submitBill(TradeBillDTO bill) {
         if (mqBacklogState.isCircuitOpen() && payMqProperties.isEnabled()) { // 积压熔断打开
             throw new BizException(503, "service overloaded, retry later: " + mqBacklogState.getLastSummary()); // HTTP 503 语义

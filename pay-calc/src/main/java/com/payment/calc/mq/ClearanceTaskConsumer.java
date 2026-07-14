@@ -52,7 +52,7 @@ public class ClearanceTaskConsumer implements MqMessageHandler {
             topic = MqTopics.CLEARANCE_TASK, // Topic
             consumerGroup = MqConsumerGroups.CALC, // calc group
             consumeMode = ConsumeMode.CONCURRENTLY, // 并发（同 merchant 不同 Queue 并行）
-            consumeThreadMax = 32, // 与 calc-thread-max 同步
+            consumeThreadMax = 20, // 本地分片联调降并发
             consumeTimeout = 15L) // 分钟，与 consume-timeout-minutes 同步
     public static class RocketListener implements RocketMQListener<String> {
 

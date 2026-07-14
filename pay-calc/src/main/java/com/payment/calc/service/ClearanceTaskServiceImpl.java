@@ -24,14 +24,13 @@ import com.payment.mq.config.PayMqProperties; // MQ 开关
 import com.payment.mq.exception.NonRetryableException; // 不可 MQ 重试异常
 import org.slf4j.Logger; // 日志接口
 import org.slf4j.LoggerFactory; // 日志工厂
-import org.springframework.stereotype.Service; // Spring 服务注解
-import org.springframework.transaction.annotation.Transactional; // 事务注解
-
+import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.payment.domain.support.ShardScanSupport;
 import java.time.Duration;
 import java.time.LocalDateTime; // 本地日期时间
 import java.util.List; // 列表
 import java.util.Optional; // Optional
+import org.springframework.stereotype.Service; // Spring 服务注解
 
 /**
  * 清算任务服务实现，负责创建、执行和重试清算任务。
@@ -85,7 +84,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
      * 创建清算任务，已存在则跳过。
      */
     @Override // 实现接口方法
-    @Transactional // 开启事务
+    @DSTransactional // 多数据源
     public void createTask(String billNo, Long merchantId) {
         if (clearanceTaskRepository.findByBillNo(billNo).isPresent()) { // 任务已存在
             return; // 直接返回（幂等）
@@ -105,13 +104,13 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
      * 执行清算任务：计费→分账→更新状态；协调 MQ L1 与业务 L2 重试。
      */
     @Override // 实现接口方法
-    @Transactional // 开启事务
+    @DSTransactional
     public void executeTask(String billNo) {
         executeTask(billNo, null);
     }
 
     @Override
-    @Transactional
+    @DSTransactional
     public void executeTask(String billNo, Long merchantId) {
         Long resolvedMerchantId = resolveMerchantId(billNo, merchantId);
         int claimed = clearanceTaskRepository.claimTask( // 抢占 PENDING → RUNNING

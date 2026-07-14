@@ -2,6 +2,7 @@ package com.payment.domain.entity; // 实体包声明
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -24,7 +25,7 @@ public class SplitDetailEntity {
     @TableField("bill_no") // 非空，最大长度 64
     public String billNo;
 
-    @TableField("merchant_id")
+    @TableField(value = "merchant_id", updateStrategy = FieldStrategy.NEVER)
     public Long merchantId;
 
     /** 参与方类型 */

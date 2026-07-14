@@ -74,8 +74,10 @@ public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
 
     @Override
     public boolean existsByBizKey(String bizKey) {
-        QueryWrapper<OutboxMessageEntity> wrapper = new QueryWrapper<>();
-        ShardQueryHelper.byBillNo(wrapper, bizKey, shardRouteService);
+        // outbox 业务键列是 biz_key（非 bill_no）；有路由时补 merchant_id 避免广播
+        QueryWrapper<OutboxMessageEntity> wrapper = new QueryWrapper<OutboxMessageEntity>()
+                .eq("biz_key", bizKey);
+        shardRouteService.findMerchantIdByBillNo(bizKey).ifPresent(id -> wrapper.eq("merchant_id", id));
         return outboxMessageMapper.selectCount(wrapper) > 0;
     }
 }

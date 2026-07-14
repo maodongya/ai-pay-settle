@@ -3,7 +3,6 @@ package com.payment.domain.repository.impl;
 import com.payment.domain.entity.SettleRouteEntity;
 import com.payment.domain.mapper.SettleRouteMapper;
 import com.payment.domain.repository.SettleRouteRepository;
-import com.payment.domain.support.MapperHelper;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -19,7 +18,13 @@ public class SettleRouteRepositoryImpl implements SettleRouteRepository {
 
     @Override
     public SettleRouteEntity save(SettleRouteEntity entity) {
-        return MapperHelper.save(settleRouteMapper, entity);
+        SettleRouteEntity existing = settleRouteMapper.selectById(entity.settleNo);
+        if (existing == null) {
+            settleRouteMapper.insert(entity);
+        } else {
+            settleRouteMapper.updateById(entity);
+        }
+        return entity;
     }
 
     @Override

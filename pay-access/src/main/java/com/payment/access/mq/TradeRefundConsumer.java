@@ -55,7 +55,7 @@ public class TradeRefundConsumer implements MqMessageHandler {
             selectorExpression = MqTags.REFUND, // Tag
             consumerGroup = MqConsumerGroups.ACCESS, // 与 PAY 同 Group
             consumeMode = ConsumeMode.CONCURRENTLY, // 并发
-            consumeThreadMax = 32) // 线程（与 access-thread-max 同步）
+            consumeThreadMax = 20) // 本地分片联调降并发
     public static class RefundRocketListener implements RocketMQListener<String> {
 
         private final TradeRefundConsumer delegate; // Handler

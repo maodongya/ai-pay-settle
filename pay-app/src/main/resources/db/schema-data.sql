@@ -150,7 +150,8 @@ CREATE TABLE IF NOT EXISTS reconcile_bill (
   CONSTRAINT uk_merchant_date UNIQUE (merchant_id, bill_date)
 ) COMMENT='商户对账单';
 
-CREATE INDEX IF NOT EXISTS idx_clearance_status_shard ON clearance_task (status, shard_id);
-CREATE INDEX IF NOT EXISTS idx_clearance_next_retry ON clearance_task (status, next_retry_time);
-CREATE INDEX IF NOT EXISTS idx_outbox_status_time ON outbox_message (status, create_time);
-CREATE INDEX IF NOT EXISTS idx_account_flow_merchant_time ON account_flow (merchant_id, create_time);
+-- 索引（MySQL 8 无 IF NOT EXISTS，重复执行忽略错误）
+CREATE INDEX idx_clearance_status_shard ON clearance_task (status, shard_id);
+CREATE INDEX idx_clearance_next_retry ON clearance_task (status, next_retry_time);
+CREATE INDEX idx_outbox_status_time ON outbox_message (status, create_time);
+CREATE INDEX idx_account_flow_merchant_time ON account_flow (merchant_id, create_time);

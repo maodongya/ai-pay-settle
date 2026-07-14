@@ -1,4 +1,8 @@
+# 单库模式（与 sharding 互斥）。启用 sharding 时由 application-sharding.yml 接管数据源。
 spring:
+  config:
+    activate:
+      on-profile: "mysql & !sharding"
   datasource:
     dynamic:
       primary: data

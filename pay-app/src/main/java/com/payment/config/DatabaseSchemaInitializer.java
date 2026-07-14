@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
@@ -20,8 +21,10 @@ import java.sql.ResultSet;
 /**
  * 启动时检测并执行建表/种子数据脚本。
  * 动态数据源模式下分别初始化 config / data 数据源。
+ * 分片模式下 data 层由 {@link ShardTableInitializer} 负责，此处只初始化 config。
  */
 @Component
+@Order(200)
 @ConditionalOnProperty(prefix = "pay.db.init", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class DatabaseSchemaInitializer implements InitializingBean {
 
@@ -40,6 +43,9 @@ public class DatabaseSchemaInitializer implements InitializingBean {
     @Value("${pay.db.init.config-schema-locations:}")
     private String configSchemaLocation;
 
+    @Value("${pay.shard.enabled:false}")
+    private boolean shardEnabled;
+
     public DatabaseSchemaInitializer(DataSource dataSource, ResourceLoader resourceLoader) {
         this.dataSource = dataSource;
         this.resourceLoader = resourceLoader;
@@ -49,6 +55,10 @@ public class DatabaseSchemaInitializer implements InitializingBean {
     public void afterPropertiesSet() throws Exception {
         if (dataSource instanceof DynamicRoutingDataSource dynamic) {
             initIfNeeded(dynamic.getDataSource(DataSourceNames.CONFIG), resolveConfigSchema(), dataLocation, "merchant_profile");
+            if (shardEnabled) {
+                log.info("分片模式已启用，跳过 data 数据源 schema 初始化（由 ShardTableInitializer 负责）");
+                return;
+            }
             initIfNeeded(dynamic.getDataSource(DataSourceNames.DATA), schemaLocation, null, CHECK_TABLE);
             return;
         }

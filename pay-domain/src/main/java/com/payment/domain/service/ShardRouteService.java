@@ -1,7 +1,9 @@
 package com.payment.domain.service;
 
+import com.baomidou.dynamic.datasource.annotation.DS;
 import com.payment.common.exception.BizException;
 import com.payment.common.exception.ErrorCode;
+import com.payment.domain.datasource.DataSourceNames;
 import com.payment.domain.entity.BillRouteEntity;
 import com.payment.domain.entity.SettleRouteEntity;
 import com.payment.domain.repository.BillRouteRepository;
@@ -12,9 +14,11 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
- * 分片路由服务：bill_no / settle_no → merchant_id，供数据层精准路由。
+ * 分片路由服务：bill_no / settle_no → merchant_id。
+ * 强制走 config 库；业务入口需使用 {@code @DSTransactional} 才能与 data 分片协同。
  */
 @Service
+@DS(DataSourceNames.CONFIG)
 public class ShardRouteService {
 
     private final BillRouteRepository billRouteRepository;

@@ -55,7 +55,7 @@ public class TradePayConsumer implements MqMessageHandler {
             selectorExpression = MqTags.PAY, // Tag 过滤
             consumerGroup = MqConsumerGroups.ACCESS, // Group
             consumeMode = ConsumeMode.CONCURRENTLY, // 并发消费
-            consumeThreadMax = 32) // 线程上限（与 MqConsumerProperties 默认一致）
+            consumeThreadMax = 20) // 本地分片联调降并发，减轻连接池压力
     public static class PayRocketListener implements RocketMQListener<String> {
 
         private final TradePayConsumer delegate; // 业务 Handler

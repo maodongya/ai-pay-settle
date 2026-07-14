@@ -1,5 +1,6 @@
 package com.payment.split.service; // 分账服务包
 
+import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.fasterxml.jackson.core.JsonProcessingException; // JSON 处理异常
 import com.fasterxml.jackson.databind.ObjectMapper; // JSON 对象映射器
 import com.payment.api.dto.AgentRelationDTO; // 代理关系 DTO
@@ -16,7 +17,6 @@ import com.payment.domain.repository.OutboxMessageRepository; // 发件箱消息
 import com.payment.domain.repository.SplitDetailRepository; // 分账明细仓储
 import com.payment.split.support.VoucherGenerator; // 凭证生成器
 import org.springframework.stereotype.Service; // Spring 服务注解
-import org.springframework.transaction.annotation.Transactional; // 事务注解
 
 import java.math.BigDecimal; // 高精度数值
 import java.time.LocalDateTime; // 本地日期时间
@@ -58,7 +58,7 @@ public class SplitServiceImpl implements SplitService {
      * 根据费用计算结果生成分账明细及相关凭证。
      */
     @Override // 实现接口方法
-    @Transactional // 开启事务
+    @DSTransactional
     public void generateSplitDetail(FeeCalcResultDTO calcResult, AgentRelationDTO relation) {
         if (splitDetailRepository.existsByBillNo(calcResult.billNo)) { // 分账已存在
             return; // 幂等返回

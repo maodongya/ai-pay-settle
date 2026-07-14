@@ -1,4 +1,8 @@
 # 生产分片模式：ShardingSphere 驱动 data 数据源，config 仍走 pay_config
+# 本地联调（推荐，走 LocalPayMq，避开 RocketMQ 历史积压）：
+#   java -jar pay-app.jar --spring.profiles.active=mysql,sharding
+# 接真实 RocketMQ（需先清空/重置消费位点）：
+#   java -jar pay-app.jar --spring.profiles.active=mysql,sharding,mq
 spring:
   config:
     activate:
@@ -7,15 +11,51 @@ spring:
     dynamic:
       primary: data
       strict: true
+      hikari:
+        maximum-pool-size: 40
+        minimum-idle: 5
+        connection-timeout: 30000
+        max-lifetime: 1800000
+        idle-timeout: 600000
       datasource:
         config:
           driver-class-name: com.mysql.cj.jdbc.Driver
           url: jdbc:mysql://127.0.0.1:3306/pay_config?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
           username: root
           password: 123456
+          hikari:
+            maximum-pool-size: 40
+            minimum-idle: 5
+            connection-timeout: 30000
         data:
+          # 外层池：每个连接代理到 ShardingSphere；内层池见 shardingsphere.yaml
           driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
           url: jdbc:shardingsphere:classpath:shardingsphere.yaml
+          hikari:
+            maximum-pool-size: 40
+            minimum-idle: 5
+            connection-timeout: 30000
+    # 覆盖 application-mq.yml 的全局 hikari，避免 timeout=3s 与 max=50 冲突
+    hikari:
+      maximum-pool-size: 40
+      minimum-idle: 5
+      connection-timeout: 30000
+      max-lifetime: 1800000
+  sql:
+    init:
+      schema-locations: classpath:db/schema-data.sql
+      data-locations: classpath:db/data-config.sql
+  task:
+    scheduling:
+      enabled: true
+
+management:
+  health:
+    db:
+      enabled: true
+  endpoint:
+    health:
+      show-details: always
 
 pay:
   shard:
@@ -26,8 +66,15 @@ pay:
       config-schema-locations: classpath:db/schema-config.sql
     shard-init:
       enabled: true
-
-spring:
-  sql:
-    init:
-      schema-locations: classpath:db/schema-data.sql
+  mq:
+    backlog:
+      circuit-enabled: false
+      check-interval-ms: 120000
+    consumer:
+      access-thread-max: 20
+      calc-thread-max: 20
+      settlement-thread-max: 20
+      settlement-payment-thread-max: 20
+  outbox:
+    dispatch-interval-ms: 3000
+    dispatch-batch-size: 50
