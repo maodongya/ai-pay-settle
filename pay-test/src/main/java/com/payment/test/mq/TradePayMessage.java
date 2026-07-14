@@ -26,8 +26,9 @@ public class TradePayMessage {
 
     public static TradePayMessage sample(MqLoadTestConfig config, int clientId, long seq) {
         TradePayMessage msg = new TradePayMessage();
-        msg.billNo = "MQ" + clientId + "-" + seq;
-        msg.merchantId = config.merchantId;
+        // 带毫秒前缀，避免多轮压测 bill_no 撞幂等
+        msg.billNo = "MQ" + System.currentTimeMillis() + "-" + clientId + "-" + seq;
+        msg.merchantId = config.resolveMerchantId(seq);
         msg.agentId = config.agentId;
         msg.secondAgentId = config.secondAgentId;
         msg.orderNo = "OD" + msg.billNo;

@@ -20,6 +20,10 @@ public class MqLoadTestConfig {
     public int warmupSeconds = 5;
     public int reportIntervalSeconds = 60;
     public long merchantId = 100001L;
+    /** 商户号区间起始（含）；与 merchantIdEnd 同时 >0 时按序号轮询 */
+    public long merchantIdStart = 0L;
+    /** 商户号区间结束（含） */
+    public long merchantIdEnd = 0L;
     public Long agentId = 200001L;
     public Long secondAgentId = 200002L;
     public BigDecimal tradeAmount = new BigDecimal("1000.00");
@@ -45,6 +49,10 @@ public class MqLoadTestConfig {
         config.reportIntervalSeconds = Integer.parseInt(props.getProperty("pay.mq.test.report-interval-seconds",
                 String.valueOf(config.reportIntervalSeconds)));
         config.merchantId = Long.parseLong(props.getProperty("pay.mq.test.merchant-id", String.valueOf(config.merchantId)));
+        config.merchantIdStart = Long.parseLong(props.getProperty("pay.mq.test.merchant-id-start",
+                String.valueOf(config.merchantIdStart)));
+        config.merchantIdEnd = Long.parseLong(props.getProperty("pay.mq.test.merchant-id-end",
+                String.valueOf(config.merchantIdEnd)));
         config.agentId = Long.parseLong(props.getProperty("pay.mq.test.agent-id", String.valueOf(config.agentId)));
         config.secondAgentId = Long.parseLong(props.getProperty("pay.mq.test.second-agent-id",
                 String.valueOf(config.secondAgentId)));
@@ -52,6 +60,15 @@ public class MqLoadTestConfig {
                 config.tradeAmount.toPlainString()));
         config.applyArgs(args);
         return config;
+    }
+
+    /** 单商户或 [start,end] 区间轮询 */
+    public long resolveMerchantId(long seq) {
+        if (merchantIdStart > 0 && merchantIdEnd >= merchantIdStart) {
+            long span = merchantIdEnd - merchantIdStart + 1;
+            return merchantIdStart + Math.floorMod(seq, span);
+        }
+        return merchantId;
     }
 
     private void applyArgs(String[] args) {
@@ -79,6 +96,8 @@ public class MqLoadTestConfig {
                 case "warmup", "warmup-seconds" -> warmupSeconds = Integer.parseInt(value);
                 case "report-interval", "report-interval-seconds" -> reportIntervalSeconds = Integer.parseInt(value);
                 case "merchant-id" -> merchantId = Long.parseLong(value);
+                case "merchant-id-start" -> merchantIdStart = Long.parseLong(value);
+                case "merchant-id-end" -> merchantIdEnd = Long.parseLong(value);
                 case "agent-id" -> agentId = Long.parseLong(value);
                 case "second-agent-id" -> secondAgentId = Long.parseLong(value);
                 case "amount", "trade-amount" -> tradeAmount = new BigDecimal(value);
@@ -100,6 +119,11 @@ public class MqLoadTestConfig {
         }
         if (nameServer == null || nameServer.isBlank()) {
             throw new IllegalArgumentException("name-server must not be blank");
+        }
+        if (merchantIdStart > 0 || merchantIdEnd > 0) {
+            if (merchantIdStart <= 0 || merchantIdEnd < merchantIdStart) {
+                throw new IllegalArgumentException("merchant-id-start/end invalid");
+            }
         }
     }
 }

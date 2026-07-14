@@ -77,10 +77,13 @@ public class ShardTableInitializer implements InitializingBean {
         seedSettleAccounts();
     }
 
-    /** 演示商户中间户：按 merchant_id 路由到正确物理分表 */
+    /** 演示商户 + 压测商户中间户：按 merchant_id 路由到正确物理分表 */
     private void seedSettleAccounts() throws Exception {
         seedSettleAccount(100001L, "6222000012345678", 2);
         seedSettleAccount(100002L, "6222000098765432", 1);
+        for (long merchantId = 10001L; merchantId <= 10100L; merchantId++) {
+            seedSettleAccount(merchantId, "6222" + String.format("%012d", merchantId), 2);
+        }
     }
 
     private void seedSettleAccount(long merchantId, String cardNo, int settleMode) throws Exception {

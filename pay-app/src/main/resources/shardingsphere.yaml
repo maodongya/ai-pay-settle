@@ -9,32 +9,32 @@ dataSources:
     jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_00?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: 123456
-    maximumPoolSize: 20
-    minimumIdle: 2
+    maximumPoolSize: 40
+    minimumIdle: 4
   ds_1:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
     jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_01?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: 123456
-    maximumPoolSize: 20
-    minimumIdle: 2
+    maximumPoolSize: 40
+    minimumIdle: 4
   ds_2:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
     jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_02?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: 123456
-    maximumPoolSize: 20
-    minimumIdle: 2
+    maximumPoolSize: 40
+    minimumIdle: 4
   ds_3:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
     jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_03?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: 123456
-    maximumPoolSize: 20
-    minimumIdle: 2
+    maximumPoolSize: 40
+    minimumIdle: 4
 
 rules:
   - !SHARDING

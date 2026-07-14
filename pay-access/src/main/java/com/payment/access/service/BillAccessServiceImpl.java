@@ -1,7 +1,6 @@
 package com.payment.access.service; // 账单接入服务包
 
 import com.baomidou.dynamic.datasource.annotation.DSTransactional;
-import com.payment.common.metrics.PayBusinessMetrics;
 import com.payment.api.dto.TradeBillDTO; // 账单 DTO
 import com.payment.api.dto.ValidateResult; // 校验结果
 import com.payment.api.service.BillAccessService; // 接入服务接口
@@ -11,11 +10,13 @@ import com.payment.calc.support.ClearanceTaskPublisher; // 清算 MQ 发布（�
 import com.payment.common.enums.BillStatus; // 账单状态
 import com.payment.common.enums.BillType; // 账单类型
 import com.payment.common.exception.BizException; // 业务异常
+import com.payment.common.metrics.PayBusinessMetrics;
 import com.payment.domain.entity.TradeBillEntity; // 账单实体
 import com.payment.domain.repository.TradeBillRepository; // 账单仓储
 import com.payment.domain.service.ShardRouteService;
 import com.payment.mq.config.PayMqProperties; // MQ 配置
 import com.payment.mq.support.MqBacklogState; // 积压熔断状态
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service; // 服务注解
 
 import java.time.LocalDateTime; // 时间
@@ -34,6 +35,7 @@ public class BillAccessServiceImpl implements BillAccessService {
     private final MqBacklogState mqBacklogState; // 积压熔断
     private final PayBusinessMetrics businessMetrics; // 业务吞吐指标
     private final ShardRouteService shardRouteService; // 分片路由
+    private final BillAccessServiceImpl self; // 代理自调用，保证 @DSTransactional 生效
 
     /** 构造注入 */
     public BillAccessServiceImpl(TradeBillRepository tradeBillRepository,
@@ -43,7 +45,8 @@ public class BillAccessServiceImpl implements BillAccessService {
                                  ClearanceTaskPublisher clearanceTaskPublisher,
                                  MqBacklogState mqBacklogState,
                                  PayBusinessMetrics businessMetrics,
-                                 ShardRouteService shardRouteService) {
+                                 ShardRouteService shardRouteService,
+                                 @Lazy BillAccessServiceImpl self) {
         this.tradeBillRepository = tradeBillRepository; // 账单仓储
         this.merchantValidateService = merchantValidateService; // 校验服务
         this.clearanceTaskService = clearanceTaskService; // 清算服务
@@ -52,90 +55,102 @@ public class BillAccessServiceImpl implements BillAccessService {
         this.mqBacklogState = mqBacklogState; // 熔断状态
         this.businessMetrics = businessMetrics; // 指标
         this.shardRouteService = shardRouteService; // 分片路由
+        this.self = self;
     }
 
     /**
      * 提交交易账单，已存在则幂等返回。
+     * DB 事务与 MQ/同步清算触发分离，避免长事务持锁。
      */
-    @Override // 实现接口
-    @DSTransactional // config(bill_route) + data(trade_bill) 多数据源事务
+    @Override
     public TradeBillDTO submitBill(TradeBillDTO bill) {
         if (mqBacklogState.isCircuitOpen() && payMqProperties.isEnabled()) { // 积压熔断打开
-            throw new BizException(503, "service overloaded, retry later: " + mqBacklogState.getLastSummary()); // HTTP 503 语义
+            throw new BizException(503, "service overloaded, retry later: " + mqBacklogState.getLastSummary());
         }
-        return tradeBillRepository.findByBillNo(bill.billNo) // 幂等查询
-                .map(this::toDto) // 已存在
-                .orElseGet(() -> createBill(bill)); // 新建
+        // 幂等先查 pay_config.bill_route，避免新单在 data 层无 merchant_id 时广播扫 16 分片
+        if (shardRouteService.findMerchantIdByBillNo(bill.billNo).isPresent()) {
+            return tradeBillRepository.findByBillNo(bill.billNo)
+                    .map(this::toDto)
+                    .orElse(bill);
+        }
+        int status = self.persistNewBill(bill);
+        if (status == BillStatus.PENDING.getCode()) {
+            triggerClearance(bill.billNo, bill.merchantId);
+        }
+        businessMetrics.markBillAccepted(bill.billNo, bill.billType);
+        return bill;
     }
 
-    /** 创建账单并触发清算 */
-    private TradeBillDTO createBill(TradeBillDTO bill) {
-        ValidateResult validation = merchantValidateService.validateBill(bill); // 校验
-        if (!validation.valid) { // 失败
-            throw new BizException(validation.errorCode, validation.message); // 业务异常
+    /**
+     * 仅落库：trade_bill + bill_route + clearance_task。
+     * @return 账单状态码
+     */
+    @DSTransactional
+    public int persistNewBill(TradeBillDTO bill) {
+        ValidateResult validation = merchantValidateService.validateBill(bill);
+        if (!validation.valid) {
+            throw new BizException(validation.errorCode, validation.message);
         }
 
-        int status = BillStatus.PENDING.getCode(); // 默认待处理
-        if (bill.billType == BillType.REFUND.getCode()) { // 退款
-            TradeBillEntity origin = tradeBillRepository.findByBillNo(bill.originBillNo).orElseThrow(); // 原单
-            if (origin.status != BillStatus.CLEARED.getCode()) { // 原单未清算
-                status = BillStatus.WAIT_ORIGIN.getCode(); // 等待原单
+        int status = BillStatus.PENDING.getCode();
+        if (bill.billType == BillType.REFUND.getCode()) {
+            TradeBillEntity origin = tradeBillRepository.findByBillNo(bill.originBillNo).orElseThrow();
+            if (origin.status != BillStatus.CLEARED.getCode()) {
+                status = BillStatus.WAIT_ORIGIN.getCode();
             }
         }
 
-        TradeBillEntity entity = new TradeBillEntity(); // 实体
-        entity.billNo = bill.billNo; // 账单号
-        entity.billType = bill.billType; // 类型
-        entity.businessLine = bill.businessLine; // 业务线
-        entity.category = bill.category; // 品类
-        entity.serviceItem = bill.serviceItem; // 服务项目
-        entity.merchantId = bill.merchantId; // 商户
-        entity.agentId = bill.agentId; // 代理
-        entity.secondAgentId = bill.secondAgentId; // 二级代理
-        entity.orderNo = bill.orderNo; // 订单号
-        entity.originBillNo = bill.originBillNo; // 原单号
-        entity.tradeAmount = bill.tradeAmount; // 金额
-        entity.cityCode = bill.cityCode; // 城市
-        entity.payChannel = bill.payChannel; // 渠道
-        entity.status = status; // 状态
-        entity.createTime = LocalDateTime.now(); // 创建时间
-        entity.updateTime = LocalDateTime.now(); // 更新时间
-        tradeBillRepository.save(entity); // 落库
-        shardRouteService.registerBillRoute(bill.billNo, bill.merchantId, bill.billType); // 注册分片路由
+        TradeBillEntity entity = new TradeBillEntity();
+        entity.billNo = bill.billNo;
+        entity.billType = bill.billType;
+        entity.businessLine = bill.businessLine;
+        entity.category = bill.category;
+        entity.serviceItem = bill.serviceItem;
+        entity.merchantId = bill.merchantId;
+        entity.agentId = bill.agentId;
+        entity.secondAgentId = bill.secondAgentId;
+        entity.orderNo = bill.orderNo;
+        entity.originBillNo = bill.originBillNo;
+        entity.tradeAmount = bill.tradeAmount;
+        entity.cityCode = bill.cityCode;
+        entity.payChannel = bill.payChannel;
+        entity.status = status;
+        entity.createTime = LocalDateTime.now();
+        entity.updateTime = LocalDateTime.now();
+        tradeBillRepository.save(entity);
+        shardRouteService.registerBillRoute(bill.billNo, bill.merchantId, bill.billType);
 
-        if (status == BillStatus.PENDING.getCode()) { // 可立即清算
-            clearanceTaskService.createTask(bill.billNo, bill.merchantId); // 建任务
-            triggerClearance(bill.billNo, bill.merchantId); // 触发清算
+        if (status == BillStatus.PENDING.getCode()) {
+            clearanceTaskService.createTask(bill.billNo, bill.merchantId);
         }
-        businessMetrics.markBillAccepted(bill.billNo, bill.billType);
-        return bill; // 返回 DTO
+        return status;
     }
 
-    /** 触发清算：MQ 模式 sendOrderly，否则 sync executeTask */
+    /** 触发清算：MQ 模式 sendOrderly，否则 sync executeTask（事务外） */
     private void triggerClearance(String billNo, Long merchantId) {
-        if (payMqProperties.isClearanceViaMq()) { // MQ 流水线
-            clearanceTaskPublisher.publish(billNo, merchantId); // 有序发 clearance_task
-        } else { // 本地同步
-            clearanceTaskService.executeTask(billNo, merchantId); // 直接执行
+        if (payMqProperties.isClearanceViaMq()) {
+            clearanceTaskPublisher.publish(billNo, merchantId);
+        } else {
+            clearanceTaskService.executeTask(billNo, merchantId);
         }
     }
 
     /** Entity → DTO */
     private TradeBillDTO toDto(TradeBillEntity entity) {
-        TradeBillDTO dto = new TradeBillDTO(); // DTO
-        dto.billNo = entity.billNo; // 账单号
-        dto.billType = entity.billType; // 类型
-        dto.businessLine = entity.businessLine; // 业务线
-        dto.category = entity.category; // 品类
-        dto.serviceItem = entity.serviceItem; // 服务项目
-        dto.merchantId = entity.merchantId; // 商户
-        dto.agentId = entity.agentId; // 代理
-        dto.secondAgentId = entity.secondAgentId; // 二级代理
-        dto.orderNo = entity.orderNo; // 订单号
-        dto.originBillNo = entity.originBillNo; // 原单
-        dto.tradeAmount = entity.tradeAmount; // 金额
-        dto.cityCode = entity.cityCode; // 城市
-        dto.payChannel = entity.payChannel; // 渠道
-        return dto; // 返回
+        TradeBillDTO dto = new TradeBillDTO();
+        dto.billNo = entity.billNo;
+        dto.billType = entity.billType;
+        dto.businessLine = entity.businessLine;
+        dto.category = entity.category;
+        dto.serviceItem = entity.serviceItem;
+        dto.merchantId = entity.merchantId;
+        dto.agentId = entity.agentId;
+        dto.secondAgentId = entity.secondAgentId;
+        dto.orderNo = entity.orderNo;
+        dto.originBillNo = entity.originBillNo;
+        dto.tradeAmount = entity.tradeAmount;
+        dto.cityCode = entity.cityCode;
+        dto.payChannel = entity.payChannel;
+        return dto;
     }
 }
