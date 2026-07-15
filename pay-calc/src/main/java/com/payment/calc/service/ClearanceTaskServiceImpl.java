@@ -235,7 +235,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             return; // 幂等 ACK
         }
         if (task.status == TaskStatus.DEAD.getCode()) { // 已 DEAD
-            throw new NonRetryableException("clearance task dead billNo=" + billNo); // 通知 Listener 进 DLQ
+            log.warn("clearance skip dead task billNo={}", billNo);
+            return; // 直接 ACK，避免 RETRY/DLQ 反复消费
         }
         if (task.status == TaskStatus.RUNNING.getCode()) { // 其他线程执行中
             return; // 不重复执行

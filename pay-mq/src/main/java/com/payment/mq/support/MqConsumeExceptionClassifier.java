@@ -36,8 +36,8 @@ public class MqConsumeExceptionClassifier {
      */
     public MqConsumeAction classify(Throwable e) {
         Throwable root = unwrap(e); // 解包到根因异常
-        if (root instanceof NonRetryableException) { // 显式标记不可重试
-            return MqConsumeAction.DLQ; // 进入 DLQ 人工处理
+        if (root instanceof NonRetryableException) { // 显式标记不可重试（如任务已 DEAD）
+            return MqConsumeAction.ACK; // 业务侧已落库，直接 ACK 避免 RETRY 队列堆积
         }
         if (root instanceof UnrecognizedPropertyException) { // JSON 字段与 DTO 不匹配
             return MqConsumeAction.DLQ; // 脏消息不重试，避免 RETRY 队列堆积
@@ -63,9 +63,9 @@ public class MqConsumeExceptionClassifier {
             return MqConsumeAction.ACK; // 业务等待，不应 MQ 重试
         }
         if (code == ErrorCode.INVALID_PARAM.getCode() // 10002 参数非法
-                || code == ErrorCode.MERCHANT_INVALID.getCode() // 10003 商户冻结
+                || code == ErrorCode.MERCHANT_INVALID.getCode() // 10003 商户冻结/不存在
                 || code == ErrorCode.RULE_NOT_MATCHED.getCode()) { // 20001 规则缺失
-            return MqConsumeAction.DLQ; // 数据/配置问题，需人工
+            return MqConsumeAction.ACK; // 永久性数据问题，重试无意义
         }
         if (code == ErrorCode.CONCURRENT_UPDATE.getCode()) { // 30005 乐观锁冲突
             return MqConsumeAction.RETRY; // 瞬态并发，可 MQ 重试
