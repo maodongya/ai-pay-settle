@@ -11,6 +11,16 @@ spring:
       mode: never
       schema-locations: classpath:db/schema.sql
       data-locations: classpath:db/data-h2.sql
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  cache:
+    type: simple
+
+payment:
+  redis:
+    enabled: false
 
 pay:
   mq:

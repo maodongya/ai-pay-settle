@@ -6,6 +6,22 @@ spring:
     name: pay-settle
   profiles:
     active: mysql
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 32
+          max-idle: 16
+          min-idle: 4
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000
+      cache-null-values: false
   sql:
     init:
       mode: never
@@ -21,6 +37,10 @@ mybatis-plus:
     db-config:
       id-type: auto
       table-underline: true
+
+payment:
+  redis:
+    enabled: true
 
 pay:
   db:

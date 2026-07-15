@@ -4,6 +4,7 @@ import com.payment.api.dto.AgentRelationDTO; // 代理关系 DTO
 import com.payment.api.dto.TradeBillDTO; // 交易账单 DTO
 import com.payment.api.dto.ValidateResult; // 校验结果 DTO
 import com.payment.api.service.MerchantValidateService; // 商户校验服务接口
+import com.payment.common.cache.CacheNames;
 import com.payment.common.enums.BillType; // 账单类型枚举
 import com.payment.common.exception.ErrorCode; // 错误码
 import com.payment.domain.entity.AgentMerchantRelationEntity; // 代理商户关系实体
@@ -12,6 +13,7 @@ import com.payment.domain.entity.TradeBillEntity; // 交易账单实体
 import com.payment.domain.repository.AgentMerchantRelationRepository; // 代理商户关系仓储
 import com.payment.domain.repository.MerchantProfileRepository; // 商户档案仓储
 import com.payment.domain.repository.TradeBillRepository; // 交易账单仓储
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service; // Spring 服务注解
 
 import java.math.BigDecimal; // 高精度数值
@@ -46,7 +48,7 @@ public class MerchantValidateServiceImpl implements MerchantValidateService {
         if (bill.tradeAmount == null || bill.tradeAmount.compareTo(BigDecimal.ZERO) <= 0) { // 金额无效
             return ValidateResult.fail(ErrorCode.INVALID_PARAM.getCode(), "amount invalid");
         }
-        MerchantProfileEntity profile = merchantProfileRepository.findById(bill.merchantId).orElse(null); // 查询商户档案
+        MerchantProfileEntity profile = merchantProfileRepository.findById(bill.merchantId).orElse(null); // 查询商户档案（带缓存）
         if (profile == null || profile.status != 1) { // 商户不存在或未启用
             return ValidateResult.fail(ErrorCode.MERCHANT_INVALID.getCode(), ErrorCode.MERCHANT_INVALID.getMessage());
         }
@@ -63,11 +65,12 @@ public class MerchantValidateServiceImpl implements MerchantValidateService {
     }
 
     /**
-     * 加载商户的代理关系，无有效关系时返回空 DTO。
+     * 加载商户的代理关系，无有效关系时返回空 DTO。结果缓存到 Redis。
      */
     @Override // 实现接口方法
+    @Cacheable(cacheNames = CacheNames.AGENT_RELATION, key = "#merchantId + ':dto'")
     public AgentRelationDTO loadRelation(Long merchantId) {
-        return relationRepository.findFirstByMerchantIdOrderByRelIdDesc(merchantId) // 查询最新关系
+        return relationRepository.findFirstByMerchantIdOrderByRelIdDesc(merchantId) // 查询最新关系（仓储层亦有缓存）
                 .filter(this::isActive) // 过滤有效关系
                 .map(this::toDto) // 转为 DTO
                 .orElseGet(() -> { // 无有效关系

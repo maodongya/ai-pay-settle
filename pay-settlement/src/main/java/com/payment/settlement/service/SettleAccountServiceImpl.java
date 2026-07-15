@@ -7,7 +7,7 @@ import com.payment.common.enums.SettleMode; // 结算模式枚举
 import com.payment.common.enums.SettleOrderStatus; // 结算订单状态枚举
 import com.payment.common.exception.BizException; // 业务异常
 import com.payment.common.exception.ErrorCode; // 错误码
-import com.payment.common.util.SeqGenerator; // 序列号生成器
+import com.payment.common.util.BizSeqGenerator; // 序列号生成器
 import com.payment.domain.entity.*; // 结算领域实体
 import com.payment.domain.repository.*; // 结算领域仓储
 import com.payment.domain.service.ShardRouteService;
@@ -41,6 +41,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     private final MockPaymentChannel paymentChannel; // 模拟支付渠道
     private final AlertService alertService; // 告警服务
     private final ShardRouteService shardRouteService; // 分片路由
+    private final BizSeqGenerator seqGenerator; // 单号生成器（Redis/本地）
 
     /**
      * 构造注入依赖。
@@ -53,7 +54,8 @@ public class SettleAccountServiceImpl implements SettleAccountService {
                                     MerchantPayableSuspendRepository suspendRepository,
                                     MockPaymentChannel paymentChannel,
                                     AlertService alertService,
-                                    ShardRouteService shardRouteService) {
+                                    ShardRouteService shardRouteService,
+                                    BizSeqGenerator seqGenerator) {
         this.accountOperator = accountOperator; // 赋值账户操作
         this.accountRepository = accountRepository; // 赋值账户仓储
         this.contractRepository = contractRepository; // 赋值合约仓储
@@ -63,6 +65,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         this.paymentChannel = paymentChannel; // 赋值支付渠道
         this.alertService = alertService; // 赋值告警服务
         this.shardRouteService = shardRouteService; // 分片路由
+        this.seqGenerator = seqGenerator;
     }
 
     /**
@@ -170,8 +173,8 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         }
 
         String cardNo = request.settleCardNo != null ? request.settleCardNo : account.settleCardNo; // 结算卡号
-        String applyNo = SeqGenerator.applyNo(); // 生成申请单号
-        String settleNo = SeqGenerator.settleNo(); // 生成结算单号
+        String applyNo = seqGenerator.applyNo(); // 生成申请单号
+        String settleNo = seqGenerator.settleNo(); // 生成结算单号
 
         accountOperator.freeze(merchantId, settleNo, amount); // 冻结提现金额
 
@@ -292,7 +295,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         }
 
         BigDecimal amount = account.waitBalance; // 全额结算
-        String settleNo = SeqGenerator.settleNo(); // 生成结算单号
+        String settleNo = seqGenerator.settleNo(); // 生成结算单号
         accountOperator.freeze(account.merchantId, settleNo, amount); // 冻结余额
 
         SettlementOrderEntity order = new SettlementOrderEntity(); // 创建结算订单
@@ -349,7 +352,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
             return; // 跳过
         }
 
-        String settleNo = SeqGenerator.settleNo(); // 生成新结算单号
+        String settleNo = seqGenerator.settleNo(); // 生成新结算单号
         accountOperator.freeze(failedOrder.merchantId, settleNo, failedOrder.settleAmount); // 冻结金额
 
         SettlementOrderEntity order = new SettlementOrderEntity(); // 创建新结算订单

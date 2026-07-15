@@ -1,9 +1,11 @@
 package com.payment.domain.repository.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.payment.common.cache.CacheNames;
 import com.payment.domain.entity.AgentMerchantRelationEntity;
 import com.payment.domain.mapper.AgentMerchantRelationMapper;
 import com.payment.domain.repository.AgentMerchantRelationRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -18,6 +20,7 @@ public class AgentMerchantRelationRepositoryImpl implements AgentMerchantRelatio
     }
 
     @Override
+    @Cacheable(cacheNames = CacheNames.AGENT_RELATION, key = "#merchantId", unless = "#result == null")
     public Optional<AgentMerchantRelationEntity> findFirstByMerchantIdOrderByRelIdDesc(Long merchantId) {
         return Optional.ofNullable(agentMerchantRelationMapper.selectOne(
                 new QueryWrapper<AgentMerchantRelationEntity>()

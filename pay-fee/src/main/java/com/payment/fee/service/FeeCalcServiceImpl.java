@@ -4,6 +4,10 @@ import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.payment.api.dto.FeeCalcDTO; // 费用计算请求 DTO
 import com.payment.api.dto.FeeCalcResultDTO; // 费用计算结果 DTO
 import com.payment.api.service.FeeCalcService; // 费用计算服务接口
+import com.payment.common.cache.RedisKeys;
+import com.payment.common.exception.BizException;
+import com.payment.common.exception.ErrorCode;
+import com.payment.common.redis.RedisDistributedLock;
 import com.payment.common.util.MoneyUtils; // 金额工具类
 import com.payment.domain.entity.FeeCalcResultEntity; // 费用计算结果实体
 import com.payment.domain.entity.FeeShareRuleEntity; // 分润规则实体
@@ -14,6 +18,7 @@ import org.springframework.stereotype.Service; // Spring 服务注解
 
 import java.math.BigDecimal; // 高精度数值
 import java.math.RoundingMode; // 舍入模式
+import java.time.Duration;
 import java.time.LocalDateTime; // 本地日期时间
 import java.util.List; // 列表
 
@@ -23,19 +28,24 @@ import java.util.List; // 列表
 @Service // 注册为 Spring 服务
 public class FeeCalcServiceImpl implements FeeCalcService {
 
+    private static final Duration FEE_LOCK_TTL = Duration.ofSeconds(10);
+
     private final FeeShareRuleRepository feeShareRuleRepository; // 分润规则仓储
     private final FeeCalcResultRepository feeCalcResultRepository; // 费用计算结果仓储
     private final FeeCalcPipeline feeCalcPipeline; // 费用计算流水线
+    private final RedisDistributedLock distributedLock;
 
     /**
      * 构造注入依赖。
      */
     public FeeCalcServiceImpl(FeeShareRuleRepository feeShareRuleRepository,
                               FeeCalcResultRepository feeCalcResultRepository,
-                              FeeCalcPipeline feeCalcPipeline) {
+                              FeeCalcPipeline feeCalcPipeline,
+                              RedisDistributedLock distributedLock) {
         this.feeShareRuleRepository = feeShareRuleRepository; // 赋值规则仓储
         this.feeCalcResultRepository = feeCalcResultRepository; // 赋值结果仓储
         this.feeCalcPipeline = feeCalcPipeline; // 赋值计算流水线
+        this.distributedLock = distributedLock;
     }
 
     /**
@@ -46,12 +56,27 @@ public class FeeCalcServiceImpl implements FeeCalcService {
     public FeeCalcResultDTO calcShareFee(FeeCalcDTO request) {
         return feeCalcResultRepository.findByBillNo(request.billNo) // 按账单号查询已有结果
                 .map(this::toDto) // 存在则转为 DTO
-                .orElseGet(() -> { // 不存在则执行计算
-                    List<FeeShareRuleEntity> rules = feeShareRuleRepository.findAll(); // 加载全部规则
-                    FeeCalcResultDTO result = feeCalcPipeline.execute(request, rules); // 执行流水线计算
-                    persist(result); // 持久化结果
-                    return result; // 返回计算结果
-                });
+                .orElseGet(() -> calcShareFeeUnderLock(request)); // 不存在则加锁计算
+    }
+
+    private FeeCalcResultDTO calcShareFeeUnderLock(FeeCalcDTO request) {
+        String lockKey = RedisKeys.feeLock(request.billNo);
+        String token = distributedLock.tryLock(lockKey, FEE_LOCK_TTL);
+        if (token == null) {
+            throw BizException.of(ErrorCode.CONCURRENT_UPDATE);
+        }
+        try {
+            return feeCalcResultRepository.findByBillNo(request.billNo)
+                    .map(this::toDto)
+                    .orElseGet(() -> {
+                        List<FeeShareRuleEntity> rules = feeShareRuleRepository.findAll(); // 注解缓存
+                        FeeCalcResultDTO result = feeCalcPipeline.execute(request, rules);
+                        persist(result);
+                        return result;
+                    });
+        } finally {
+            distributedLock.unlock(lockKey, token);
+        }
     }
 
     /**
@@ -78,7 +103,7 @@ public class FeeCalcServiceImpl implements FeeCalcService {
                     result.merchantIncome = scaleNeg(origin.merchantIncome, ratio); // 按比例冲减商户收入
                     result.ruleSnapshotJson = "{\"refundOrigin\":\"" + originBillNo + "\",\"ratio\":" + ratio + "}"; // 记录退款快照
                     persist(result); // 持久化结果
-                    return result; // 返回计算结果
+                    return result;
                 });
     }
 
