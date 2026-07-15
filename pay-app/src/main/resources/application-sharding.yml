@@ -1,8 +1,5 @@
 # 生产分片模式：ShardingSphere 驱动 data 数据源，config 仍走 pay_config
-# 本地联调（推荐，走 LocalPayMq，避开 RocketMQ 历史积压）：
-#   java -jar pay-app.jar --spring.profiles.active=mysql,sharding
-# 接真实 RocketMQ（需先清空/重置消费位点）：
-#   java -jar pay-app.jar --spring.profiles.active=mysql,sharding,mq
+# 连接池预算见 数据库连接池优化.md（单实例物理连接峰值 ~64）
 spring:
   config:
     activate:
@@ -12,35 +9,47 @@ spring:
       primary: data
       strict: true
       hikari:
-        maximum-pool-size: 40
-        minimum-idle: 5
+        pool-name: dynamic-default
+        maximum-pool-size: 20
+        minimum-idle: 4
         connection-timeout: 30000
-        max-lifetime: 1800000
         idle-timeout: 600000
+        max-lifetime: 1800000
+        connection-test-query: SELECT 1
+        leak-detection-threshold: 60000
       datasource:
         config:
           driver-class-name: com.mysql.cj.jdbc.Driver
-          url: jdbc:mysql://127.0.0.1:3306/pay_config?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+          url: jdbc:mysql://127.0.0.1:3306/pay_config?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
           username: root
           password: 123456
           hikari:
-            maximum-pool-size: 40
-            minimum-idle: 5
+            pool-name: pay-config
+            maximum-pool-size: 16
+            minimum-idle: 4
             connection-timeout: 30000
+            idle-timeout: 600000
+            max-lifetime: 1800000
+            connection-test-query: SELECT 1
         data:
-          # 外层池：每个连接代理到 ShardingSphere；内层池见 shardingsphere.yaml
           driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
           url: jdbc:shardingsphere:classpath:shardingsphere.yaml
           hikari:
-            maximum-pool-size: 40
-            minimum-idle: 5
+            pool-name: pay-data-shard-proxy
+            maximum-pool-size: 20
+            minimum-idle: 4
             connection-timeout: 30000
-    # 覆盖 application-mq.yml 的全局 hikari，避免 timeout=3s 与 max=50 冲突
+            idle-timeout: 600000
+            max-lifetime: 1800000
+            connection-test-query: SELECT 1
     hikari:
-      maximum-pool-size: 40
-      minimum-idle: 5
+      pool-name: spring-hikari-fallback
+      maximum-pool-size: 20
+      minimum-idle: 4
       connection-timeout: 30000
+      idle-timeout: 600000
       max-lifetime: 1800000
+      connection-test-query: SELECT 1
   sql:
     init:
       schema-locations: classpath:db/schema-data.sql
@@ -56,6 +65,9 @@ management:
   endpoint:
     health:
       show-details: always
+  metrics:
+    enable:
+      hikaricp: true
 
 pay:
   shard:
@@ -71,8 +83,6 @@ pay:
       circuit-enabled: false
       check-interval-ms: 120000
     consumer:
-      # 30~100 TPS 分片联调足够；过高会打满内层 Hikari 池
-      # 由 RocketMQPushConsumerLifecycleListener 同时设置 min=max
       access-thread-max: 8
       calc-thread-max: 8
       settlement-thread-max: 8
@@ -81,5 +91,4 @@ pay:
     dispatch-interval-ms: 3000
     dispatch-batch-size: 50
   loadtest:
-    # 压测时设 true，暂停补偿/重试 Job，降低与热路径的锁争用
     pause-jobs: false

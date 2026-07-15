@@ -31,6 +31,8 @@ import java.time.LocalDateTime; // 本地日期时间
 import java.util.List; // 列表
 import java.util.Optional; // Optional
 import org.springframework.stereotype.Service; // Spring 服务注解
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 清算任务服务实现，负责创建、执行和重试清算任务。
@@ -165,7 +167,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             clearanceTaskRepository.save(task); // 保存任务
             businessMetrics.recordThroughput(PayBusinessMetrics.STAGE_CLEARANCE_DONE, true);
 
-            activateWaitingRefunds(billNo); // 异步激活等待原单的退款
+            scheduleActivateWaitingRefunds(billNo); // 事务提交后再激活退款，缩短持锁时间
         } catch (NonRetryableException e) {
             throw e;
         } catch (Exception e) { // 清算失败
@@ -258,6 +260,22 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
                 executeTask(t.billNo, t.merchantId); // 本地直接执行
             }
         });
+    }
+
+    /**
+     * 清算主事务提交后再激活退款，避免在同一 @DSTransactional 内嵌套写库与发 MQ。
+     */
+    private void scheduleActivateWaitingRefunds(String clearedBillNo) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    activateWaitingRefunds(clearedBillNo);
+                }
+            });
+        } else {
+            activateWaitingRefunds(clearedBillNo);
+        }
     }
 
     /**

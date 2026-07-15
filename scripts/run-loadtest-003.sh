@@ -69,32 +69,39 @@ sample_once() {
   echo "$(date '+%F %T') SAMPLE[$tag] health=$health routes=$routes accessDiff=$access_diff appAlive=$(is_app_alive && echo 1 || echo 0)" | tee -a "$WATCH_LOG"
 }
 
-echo "=== loadtest 003 prepare $(date '+%F %T') ===" | tee "$WATCH_LOG"
-
-pkill -f 'com.payment.test.mq.MqLoadTestMain' 2>/dev/null || true
-sleep 1
-
-# reset MQ offsets
-docker exec rmq-broker sh -c '
+reset_mq_offsets() {
+  echo "$(date '+%F %T') reset MQ offsets" | tee -a "$WATCH_LOG"
+  docker exec rmq-broker sh -c '
 cd /home/rocketmq/rocketmq-4.9.6
 for pair in \
   "pay-access-consumer:trade_pay_topic" \
   "pay-access-consumer:%RETRY%pay-access-consumer" \
+  "pay-access-refund-consumer:trade_refund_topic" \
+  "pay-access-refund-consumer:%RETRY%pay-access-refund-consumer" \
   "pay-calc-consumer:clearance_task_topic" \
   "pay-calc-consumer:%RETRY%pay-calc-consumer" \
   "pay-settlement-consumer:settle_amount_topic"
 do
   g=${pair%%:*}; t=${pair#*:}
-  sh bin/mqadmin resetOffsetByTime -n rmq-namesrv:9876 -g "$g" -t "$t" -s now -f true >/dev/null
+  sh bin/mqadmin resetOffsetByTime -n rmq-namesrv:9876 -g "$g" -t "$t" -s now -f true >/dev/null 2>&1 || true
 done
-'
+' || true
+}
+
+echo "=== loadtest 003 prepare $(date '+%F %T') ===" | tee "$WATCH_LOG"
+
+pkill -f 'com.payment.test.mq.MqLoadTestMain' 2>/dev/null || true
+sleep 1
 
 start_app
 sleep 5
-docker exec rmq-broker sh -c 'cd /home/rocketmq/rocketmq-4.9.6 && sh bin/mqadmin consumerProgress -n rmq-namesrv:9876 2>/dev/null' | head -10 | tee -a "$WATCH_LOG"
+reset_mq_offsets
+sleep 5
+docker exec rmq-broker sh -c 'cd /home/rocketmq/rocketmq-4.9.6 && sh bin/mqadmin consumerProgress -n rmq-namesrv:9876 2>/dev/null' \
+  | head -12 | tee -a "$WATCH_LOG" || true
 
 BASE_ROUTES=$(docker exec mysql8 mysql -uroot -p123456 -N -e \
-  "SELECT COUNT(*) FROM pay_config.bill_route WHERE merchant_id BETWEEN $MERCHANT_START AND $MERCHANT_END;" 2>/dev/null)
+  "SELECT COUNT(*) FROM pay_config.bill_route WHERE merchant_id BETWEEN $MERCHANT_START AND $MERCHANT_END;" 2>/dev/null || echo 0)
 echo "$BASE_ROUTES" > "$RESULT_DIR/base-routes.txt"
 echo "BASE_ROUTES=$BASE_ROUTES" | tee -a "$WATCH_LOG"
 
@@ -152,7 +159,7 @@ docker exec rmq-broker sh -c 'cd /home/rocketmq/rocketmq-4.9.6 && sh bin/mqadmin
   | head -20 >"$RESULT_DIR/mq-progress.txt" || true
 
 END_ROUTES=$(docker exec mysql8 mysql -uroot -p123456 -N -e \
-  "SELECT COUNT(*) FROM pay_config.bill_route WHERE merchant_id BETWEEN $MERCHANT_START AND $MERCHANT_END;" 2>/dev/null)
+  "SELECT COUNT(*) FROM pay_config.bill_route WHERE merchant_id BETWEEN $MERCHANT_START AND $MERCHANT_END;" 2>/dev/null || echo 0)
 echo "$END_ROUTES" >"$RESULT_DIR/end-routes.txt"
 echo "END_ROUTES=$END_ROUTES DELTA=$((END_ROUTES-BASE_ROUTES))" | tee -a "$WATCH_LOG"
 
@@ -245,6 +252,7 @@ GROUP BY rel_type ORDER BY rel_type;" 2>/dev/null
     echo "trade_pay_fail=$(grep -c 'trade pay consume failed' "$APP_LOG" || true)"
     echo "clearance_fail=$(grep -c 'clearance failed' "$APP_LOG" || true)"
     echo "data_too_long=$(grep -c 'Data too long' "$APP_LOG" || true)"
+    echo "consumer_threads_applied=$(grep -c 'MQ consumer threads applied' "$APP_LOG" || true)"
   fi
 } | tee "$RESULT_DIR/verify.txt"
 

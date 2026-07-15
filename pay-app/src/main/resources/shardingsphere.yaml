@@ -1,40 +1,60 @@
 # ShardingSphere 5.5 — 4 库 × 4 表 = 16 分片，分片键 merchant_id
-# 表策略必须用 INLINE（显式 actualDataNodes 下禁止 MOD 等 auto 算法）
+# 内层 Hikari 池：每库 maximumPoolSize=12，单实例物理连接预算 48（见 数据库连接池优化.md）
 databaseName: pay_data_sharding
 
 dataSources:
   ds_0:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
-    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_00?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_00?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
     username: root
     password: 123456
-    maximumPoolSize: 40
-    minimumIdle: 4
+    poolName: shard-ds-00
+    maximumPoolSize: 12
+    minimumIdle: 2
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    connectionTestQuery: SELECT 1
   ds_1:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
-    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_01?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_01?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
     username: root
     password: 123456
-    maximumPoolSize: 40
-    minimumIdle: 4
+    poolName: shard-ds-01
+    maximumPoolSize: 12
+    minimumIdle: 2
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    connectionTestQuery: SELECT 1
   ds_2:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
-    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_02?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_02?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
     username: root
     password: 123456
-    maximumPoolSize: 40
-    minimumIdle: 4
+    poolName: shard-ds-02
+    maximumPoolSize: 12
+    minimumIdle: 2
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    connectionTestQuery: SELECT 1
   ds_3:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
-    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_03?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_03?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
     username: root
     password: 123456
-    maximumPoolSize: 40
-    minimumIdle: 4
+    poolName: shard-ds-03
+    maximumPoolSize: 12
+    minimumIdle: 2
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    connectionTestQuery: SELECT 1
 
 rules:
   - !SHARDING

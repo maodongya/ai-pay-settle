@@ -34,10 +34,14 @@ pay:
 spring:
   datasource:
     hikari:
-      maximum-pool-size: 50
-      minimum-idle: 10
-      connection-timeout: 3000
+      # sharding profile 会覆盖；此处与分片模式对齐，避免 mq profile 单独把 timeout 压到 3s
+      pool-name: mq-profile-fallback
+      maximum-pool-size: 20
+      minimum-idle: 4
+      connection-timeout: 30000
+      idle-timeout: 600000
       max-lifetime: 1800000
+      connection-test-query: SELECT 1
 
 rocketmq:
   name-server: 127.0.0.1:9877
