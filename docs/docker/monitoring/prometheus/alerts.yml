@@ -1,0 +1,108 @@
+groups:
+  - name: pay-infra
+    rules:
+      - alert: HostHighCpu
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "宿主机 CPU 使用率过高"
+          description: "instance={{ $labels.instance }} CPU={{ $value | printf \"%.1f\" }}%"
+
+      - alert: HostLowMemory
+        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "宿主机可用内存不足"
+          description: "instance={{ $labels.instance }} 可用内存={{ $value | printf \"%.1f\" }}%"
+
+      - alert: MysqlHighConnections
+        expr: mysql_global_status_threads_connected / mysql_global_variables_max_connections > 0.8
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MySQL 连接数接近上限"
+          description: "使用率={{ $value | humanizePercentage }}"
+
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85 and redis_memory_max_bytes > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis 内存使用率过高"
+
+      - alert: RocketMqConsumerLag
+        expr: sum(rocketmq_group_diff) by (group) > 10000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RocketMQ 消费滞后过高"
+          description: "group={{ $labels.group }} diff={{ $value }}"
+
+  - name: pay-app
+    rules:
+      - alert: PayAppDown
+        expr: up{job="pay-settle"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "pay-app 指标不可达"
+
+      - alert: PayOutboxBacklog
+        expr: pay_outbox_pending > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox 积压过高"
+          description: "pending={{ $value }}"
+
+      - alert: PayMqCircuitOpen
+        expr: pay_mq_circuit_open == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MQ 积压熔断已打开"
+
+      - alert: PayMqConsumerLag
+        expr: pay_mq_consumer_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "应用侧 MQ 消费滞后"
+          description: "group={{ $labels.group }} topic={{ $labels.topic }} lag={{ $value }}"
+
+      - alert: PayMqDlqNonEmpty
+        expr: pay_mq_dlq_count > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MQ DLQ 非空"
+          description: "group={{ $labels.group }} count={{ $value }}"
+
+      - alert: PayJvmHeapHigh
+        expr: sum(jvm_memory_used_bytes{area="heap"}) / sum(jvm_memory_max_bytes{area="heap"}) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM 堆内存使用率过高"
+
+      - alert: HikariPoolPending
+        expr: hikaricp_connections_pending > 5
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HikariCP 连接等待"
+          description: "pool={{ $labels.pool }} pending={{ $value }}"

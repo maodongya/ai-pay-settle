@@ -25,6 +25,11 @@
             <version>2.3.1</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-tools</artifactId>
+            <version>4.9.6</version>
+        </dependency>
+        <dependency>
             <groupId>com.payment</groupId>
             <artifactId>pay-domain</artifactId>
         </dependency>

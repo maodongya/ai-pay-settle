@@ -1,0 +1,99 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "JVM 进程 CPU",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "process_cpu_usage * 100", "legendFormat": "process" }],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "type": "stat",
+      "title": "系统 CPU",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "system_cpu_usage * 100", "legendFormat": "system" }],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "type": "stat",
+      "title": "JVM 堆使用 %",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) / sum(jvm_memory_max_bytes{area=\"heap\"}) * 100", "legendFormat": "heap" }],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "type": "stat",
+      "title": "活跃线程",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "jvm_threads_live_threads", "legendFormat": "threads" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM 内存（按区域）",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes", "legendFormat": "{{area}} used" },
+        { "expr": "jvm_memory_max_bytes", "legendFormat": "{{area}} max" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "GC 停顿",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "rate(jvm_gc_pause_seconds_sum[5m])", "legendFormat": "{{action}} sum/s" },
+        { "expr": "histogram_quantile(0.99, sum(rate(jvm_gc_pause_seconds_bucket[5m])) by (le, action))", "legendFormat": "{{action}} p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "HikariCP 连接池",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "hikaricp_connections_active", "legendFormat": "{{pool}} active" },
+        { "expr": "hikaricp_connections_idle", "legendFormat": "{{pool}} idle" },
+        { "expr": "hikaricp_connections_pending", "legendFormat": "{{pool}} pending" },
+        { "expr": "hikaricp_connections_max", "legendFormat": "{{pool}} max" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP / MQ 吞吐",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "sum(rate(pay_http_request_total{status=~\"2..\"}[1m]))", "legendFormat": "http tps" },
+        { "expr": "sum(rate(pay_mq_consume_total{status=\"success\"}[1m]))", "legendFormat": "mq consume" },
+        { "expr": "sum(rate(pay_mq_produce_total{status=\"success\"}[1m]))", "legendFormat": "mq produce" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "业务积压与告警",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "pay_outbox_pending", "legendFormat": "outbox" },
+        { "expr": "pay_clearance_pending", "legendFormat": "clearance" },
+        { "expr": "pay_alert_open_total", "legendFormat": "alerts" },
+        { "expr": "sum(pay_exception_open_total)", "legendFormat": "exceptions" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["pay-settle", "runtime", "jvm"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "应用运行时",
+  "uid": "pay-app-runtime",
+  "version": 1
+}

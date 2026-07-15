@@ -129,8 +129,15 @@
     },
     {
       "type": "stat",
-      "title": "MQ 熔断",
+      "title": "JVM 进程 CPU",
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 28 },
+      "targets": [{ "expr": "process_cpu_usage * 100", "legendFormat": "cpu" }],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "type": "stat",
+      "title": "MQ 熔断",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 28 },
       "targets": [{ "expr": "pay_mq_circuit_open", "legendFormat": "circuit" }],
       "fieldConfig": {
         "defaults": {
@@ -143,19 +150,19 @@
     {
       "type": "stat",
       "title": "未处理告警",
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 28 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 28 },
       "targets": [{ "expr": "pay_alert_open_total", "legendFormat": "alerts" }]
     },
     {
       "type": "stat",
       "title": "未关闭工单",
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 28 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 28 },
       "targets": [{ "expr": "sum(pay_exception_open_total)", "legendFormat": "exceptions" }]
     },
     {
       "type": "stat",
       "title": "JVM 堆使用",
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 28 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 28 },
       "targets": [
         {
           "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) / sum(jvm_memory_max_bytes{area=\"heap\"}) * 100",
@@ -167,7 +174,7 @@
     {
       "type": "stat",
       "title": "HikariCP Active",
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 28 },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 28 },
       "targets": [{ "expr": "hikaricp_connections_active", "legendFormat": "active" }]
     },
     {

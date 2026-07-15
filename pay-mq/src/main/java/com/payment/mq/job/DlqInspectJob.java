@@ -2,7 +2,8 @@ package com.payment.mq.job; // MQ DLQ 巡检 Job 包
 
 import com.payment.control.service.AlertService; // 告警服务
 import com.payment.control.service.ExceptionRecordService; // 异常工单服务
-import com.payment.mq.MqConsumerGroups; // Consumer Group 常量
+import com.payment.mq.MqConsumerGroups;
+import com.payment.mq.support.MqAdminMetricsCollector;
 import com.payment.mq.config.PayMqProperties; // MQ 开关
 import org.slf4j.Logger; // 日志
 import org.slf4j.LoggerFactory; // 日志工厂
@@ -36,16 +37,19 @@ public class DlqInspectJob {
     private final PayMqProperties payMqProperties; // MQ 配置（含 nameServer）
     private final AlertService alertService; // 写 alert_record
     private final ExceptionRecordService exceptionRecordService; // 可选建 EX-0109 工单
+    private final MqAdminMetricsCollector mqAdminMetricsCollector; // Admin 指标采集
 
     /**
      * 构造注入依赖。
      */
     public DlqInspectJob(PayMqProperties payMqProperties,
                          AlertService alertService,
-                         ExceptionRecordService exceptionRecordService) {
+                         ExceptionRecordService exceptionRecordService,
+                         MqAdminMetricsCollector mqAdminMetricsCollector) {
         this.payMqProperties = payMqProperties; // 保存 MQ 配置
         this.alertService = alertService; // 保存告警服务
         this.exceptionRecordService = exceptionRecordService; // 保存工单服务
+        this.mqAdminMetricsCollector = mqAdminMetricsCollector;
     }
 
     /**
@@ -75,7 +79,6 @@ public class DlqInspectJob {
      * 占位实现：返回 0。生产环境请使用 DefaultMQAdminExt 查询 %DLQ%{group} Topic 堆积。
      */
     private long queryDlqCount(String consumerGroup) {
-        log.trace("dlq query placeholder group={} nameServer={}", consumerGroup, payMqProperties.getNameServer()); // 占位 trace
-        return 0L; // 占位：无 Admin 客户端时视为 0
+        return mqAdminMetricsCollector.currentDlqCount(consumerGroup);
     }
 }
