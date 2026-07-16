@@ -28,6 +28,27 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-tools</artifactId>
             <version>4.9.6</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.rocketmq</groupId>
+                    <artifactId>rocketmq-client</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.rocketmq</groupId>
+                    <artifactId>rocketmq-remoting</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- spring-boot-starter 2.3.1 需要 5.x client（含 setNamespaceV2）；tools 4.9.6 仅保留 common/admin -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <version>5.3.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-remoting</artifactId>
+            <version>5.3.0</version>
         </dependency>
         <dependency>
             <groupId>com.payment</groupId>
