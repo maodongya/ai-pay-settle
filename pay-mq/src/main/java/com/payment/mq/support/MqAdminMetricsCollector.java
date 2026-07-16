@@ -6,8 +6,9 @@ import com.payment.mq.config.PayMqProperties;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.common.admin.ConsumeStats;
-import org.apache.rocketmq.common.admin.TopicStatsTable;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
+import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 通过 RocketMQ Admin API 采集 Consumer Lag / DLQ 指标，暴露到 Prometheus。
+ * <p>
+ * 依赖 rocketmq-tools/client/remoting 均为 5.3.0；admin 类型在
+ * {@code org.apache.rocketmq.remoting.protocol.admin}。
  */
 @Component
 @ConditionalOnProperty(name = "pay.mq.enabled", havingValue = "true")
@@ -111,9 +115,11 @@ public class MqAdminMetricsCollector {
         try {
             String dlqTopic = "%DLQ%" + consumerGroup;
             TopicStatsTable stats = client.examineTopicStats(dlqTopic);
-            return stats.getOffsetTable().values().stream()
-                    .mapToLong(off -> Math.max(0, off.getMaxOffset() - off.getMinOffset()))
-                    .sum();
+            long sum = 0L;
+            for (TopicOffset offset : stats.getOffsetTable().values()) {
+                sum += Math.max(0, offset.getMaxOffset() - offset.getMinOffset());
+            }
+            return sum;
         } catch (Exception e) {
             log.trace("dlq query failed group={} msg={}", consumerGroup, e.getMessage());
             return 0L;
@@ -123,9 +129,7 @@ public class MqAdminMetricsCollector {
     private long queryLag(DefaultMQAdminExt client, String group, String topic) {
         try {
             ConsumeStats stats = client.examineConsumeStats(group, topic);
-            return stats.getOffsetTable().values().stream()
-                    .mapToLong(cs -> Math.max(0, cs.getBrokerOffset() - cs.getConsumerOffset()))
-                    .sum();
+            return Math.max(0, stats.computeTotalDiff());
         } catch (Exception e) {
             log.trace("lag query failed group={} topic={} msg={}", group, topic, e.getMessage());
             return 0L;
