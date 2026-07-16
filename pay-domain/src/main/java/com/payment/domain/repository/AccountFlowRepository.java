@@ -14,6 +14,8 @@ public interface AccountFlowRepository {
 
     boolean existsByBillNoAndOpType(String billNo, Integer opType);
 
+    boolean existsBySettleNoAndOpType(String settleNo, Integer opType);
+
     List<AccountFlowEntity> findByMerchantIdAndCreateTimeBetween(
             Long merchantId, LocalDateTime start, LocalDateTime end);
 }

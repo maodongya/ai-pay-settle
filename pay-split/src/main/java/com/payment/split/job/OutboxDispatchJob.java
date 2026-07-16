@@ -1,78 +1,84 @@
-package com.payment.split.job; // 分账/Outbox 定时任务包
+package com.payment.split.job;
 
-import com.payment.control.service.AlertService; // 告警
-import com.payment.domain.entity.OutboxMessageEntity; // Outbox 实体
-import com.payment.domain.repository.OutboxMessageRepository; // Outbox 仓储
-import com.payment.mq.MqTags; // CREDIT Tag
-import com.payment.mq.PayMqProducer; // 生产者
-import com.payment.mq.config.PayMqProperties; // MQ 开关
-import com.payment.mq.support.PayMqProduceMetrics; // 投递指标
-import org.slf4j.Logger; // 日志
-import org.slf4j.LoggerFactory; // 日志工厂
-import org.springframework.beans.factory.annotation.Value; // 注入 batch 配置
-import org.springframework.scheduling.annotation.Scheduled; // 定时
-import org.springframework.stereotype.Component; // 组件
-import org.springframework.transaction.annotation.Transactional; // 事务
+import com.payment.control.service.AlertService;
+import com.payment.domain.entity.OutboxMessageEntity;
+import com.payment.domain.repository.OutboxMessageRepository;
+import com.payment.domain.support.ShardScanSupport;
+import com.payment.mq.MqTags;
+import com.payment.mq.PayMqProducer;
+import com.payment.mq.config.PayMqProperties;
+import com.payment.mq.support.PayMqProduceMetrics;
+import com.payment.split.support.OutboxDispatchTxSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
 
-import java.util.List; // 列表
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * 发件箱消息派发：经 MQ/Local 有序投递 settle_amount_topic（同 merchant 串行入账）。
+ * 发件箱消息派发：分片扫描 pending，MQ 发送在事务外，短事务仅标记已发送。
  */
-@Component // Spring 组件
+@Component
 public class OutboxDispatchJob {
 
-    private static final Logger log = LoggerFactory.getLogger(OutboxDispatchJob.class); // 日志
+    private static final Logger log = LoggerFactory.getLogger(OutboxDispatchJob.class);
 
-    private final OutboxMessageRepository outboxMessageRepository; // Outbox 仓储
-    private final PayMqProducer payMqProducer; // MQ 生产者
-    private final PayMqProperties payMqProperties; // MQ 配置
-    private final AlertService alertService; // 失败告警
-    private final PayMqProduceMetrics produceMetrics; // Outbox 投递指标
-    private final int batchSize; // 每批条数
+    private final OutboxMessageRepository outboxMessageRepository;
+    private final OutboxDispatchTxSupport outboxDispatchTxSupport;
+    private final PayMqProducer payMqProducer;
+    private final PayMqProperties payMqProperties;
+    private final AlertService alertService;
+    private final PayMqProduceMetrics produceMetrics;
+    private final int batchSize;
 
-    /** 构造注入 */
     public OutboxDispatchJob(OutboxMessageRepository outboxMessageRepository,
+                             OutboxDispatchTxSupport outboxDispatchTxSupport,
                              PayMqProducer payMqProducer,
                              PayMqProperties payMqProperties,
                              AlertService alertService,
                              PayMqProduceMetrics produceMetrics,
                              @Value("${pay.outbox.dispatch-batch-size:200}") int batchSize) {
-        this.outboxMessageRepository = outboxMessageRepository; // 仓储
-        this.payMqProducer = payMqProducer; // 生产者
-        this.payMqProperties = payMqProperties; // 配置
-        this.alertService = alertService; // 告警
-        this.produceMetrics = produceMetrics; // 指标
-        this.batchSize = batchSize; // 批量大小
+        this.outboxMessageRepository = outboxMessageRepository;
+        this.outboxDispatchTxSupport = outboxDispatchTxSupport;
+        this.payMqProducer = payMqProducer;
+        this.payMqProperties = payMqProperties;
+        this.alertService = alertService;
+        this.produceMetrics = produceMetrics;
+        this.batchSize = batchSize;
     }
 
-    /** 定时扫描 pending Outbox 并 sendOrderly */
-    @Scheduled(fixedDelayString = "${pay.outbox.dispatch-interval-ms:5000}") // 默认 5s，mq profile 可改 1s
-    @Transactional // 更新 status 与 DB 一致
+    @Scheduled(fixedDelayString = "${pay.outbox.dispatch-interval-ms:5000}")
     public void dispatch() {
-        if (!payMqProperties.isOutboxViaMq()) { // 未走 MQ
-            return; // 跳过
+        if (!payMqProperties.isOutboxViaMq()) {
+            return;
         }
-        // 无分片键时 ShardingSphere 会广播；避免 MOD(merchant_id) 条件导致解析/连接放大
-        List<OutboxMessageEntity> pending = outboxMessageRepository
-                .findTopNByStatusOrderByCreateTimeAsc(0, batchSize);
-        int failCount = 0; // 本批失败计数
-        for (OutboxMessageEntity msg : pending) { // 逐条发送
-            try { // 发送
+        int perShard = ShardScanSupport.perShardLimit(batchSize);
+        List<OutboxMessageEntity> collected = new ArrayList<>();
+        ShardScanSupport.forEachShard(shardId -> collected.addAll(
+                outboxMessageRepository.findTopNByStatusAndShardIdOrderByCreateTimeAsc(0, shardId, perShard)));
+        List<OutboxMessageEntity> pending = collected.size() > batchSize
+                ? collected.subList(0, batchSize) : collected;
+        int failCount = 0;
+        for (OutboxMessageEntity msg : pending) {
+            try {
                 String hashKey = msg.merchantId != null ? msg.merchantId.toString() : msg.bizKey;
-                payMqProducer.sendOrderly(msg.topic, MqTags.CREDIT, hashKey, msg.payload); // 有序发送
-                msg.status = 1; // 已发送
-                outboxMessageRepository.save(msg); // 更新状态（带 merchant_id 精准路由）
+                payMqProducer.sendOrderly(msg.topic, MqTags.CREDIT, hashKey, msg.payload);
+                if (!outboxDispatchTxSupport.markSent(msg.id, msg.merchantId)) {
+                    log.debug("outbox already sent id={} merchantId={}", msg.id, msg.merchantId);
+                }
                 produceMetrics.recordOutboxDispatch(msg.topic, true);
-            } catch (Exception e) { // 发送失败
-                failCount++; // 失败 +1
+            } catch (Exception e) {
+                failCount++;
                 produceMetrics.recordOutboxDispatch(msg.topic, false);
-                log.warn("outbox dispatch failed id={} merchantId={}", msg.id, msg.merchantId, e); // 警告日志
+                log.warn("outbox dispatch failed id={} merchantId={}", msg.id, msg.merchantId, e);
             }
         }
-        if (failCount > 0) { // 存在失败
-            alertService.send(AlertService.MQ_BACKLOG, AlertService.LEVEL_WARN, // 预警
-                    "outbox dispatch batch failures=" + failCount); // 内容
+        if (failCount > 0) {
+            alertService.send(AlertService.MQ_BACKLOG, AlertService.LEVEL_WARN,
+                    "outbox dispatch batch failures=" + failCount);
         }
     }
 }

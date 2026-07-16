@@ -86,11 +86,9 @@ public class SettleAccountServiceImpl implements SettleAccountService {
                 continue; // 跳过
             }
             BigDecimal deduct = remain.min(open); // 本次冲抵金额
-            suspend.settledAmount = suspend.settledAmount.add(deduct); // 更新已结清金额
-            if (suspend.settledAmount.compareTo(suspend.suspendAmount) >= 0) { // 全部结清
-                suspend.status = 1; // 标记已结清
+            if (!suspendRepository.applySettlementOffset(suspend.id, merchantId, deduct)) { // 单 SQL 冲抵
+                continue; // 并发冲突时跳过
             }
-            suspendRepository.save(suspend); // 保存挂账
             remain = remain.subtract(deduct); // 扣减剩余金额
             if (remain.signum() == 0) { // 全部用于冲抵
                 return; // 结束
@@ -242,13 +240,9 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         order.updateTime = LocalDateTime.now(); // 更新时间
         settlementOrderRepository.save(order); // 保存订单
 
-        withdrawApplyRepository.findAll().stream() // 更新关联提现申请
-                .filter(w -> order.settleNo.equals(w.settleNo)) // 匹配结算单号
-                .findFirst() // 取第一条
-                .ifPresent(w -> { // 存在则更新
-                    w.status = "SUCCESS".equalsIgnoreCase(callback.status) ? 2 : 3; // 2 成功 3 失败
-                    withdrawApplyRepository.save(w); // 保存申请
-                });
+        int withdrawStatus = "SUCCESS".equalsIgnoreCase(callback.status) ? 2 : 3; // 2 成功 3 失败
+        withdrawApplyRepository.updateStatusBySettleNoAndMerchantId(
+                order.settleNo, order.merchantId, withdrawStatus); // 单 SQL 更新提现申请
     }
 
     /**

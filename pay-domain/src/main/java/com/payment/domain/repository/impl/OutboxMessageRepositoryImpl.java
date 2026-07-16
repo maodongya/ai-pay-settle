@@ -80,4 +80,9 @@ public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
         shardRouteService.findMerchantIdByBillNo(bizKey).ifPresent(id -> wrapper.eq("merchant_id", id));
         return outboxMessageMapper.selectCount(wrapper) > 0;
     }
+
+    @Override
+    public int markSentByIdAndMerchantId(Long id, Long merchantId) {
+        return outboxMessageMapper.markSentByIdAndMerchantId(id, merchantId);
+    }
 }

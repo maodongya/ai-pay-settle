@@ -32,6 +32,13 @@ public class AccountFlowRepositoryImpl implements AccountFlowRepository {
     }
 
     @Override
+    public boolean existsBySettleNoAndOpType(String settleNo, Integer opType) {
+        return accountFlowMapper.selectCount(new QueryWrapper<AccountFlowEntity>()
+                .eq("settle_no", settleNo)
+                .eq("op_type", opType)) > 0;
+    }
+
+    @Override
     public List<AccountFlowEntity> findByMerchantIdAndCreateTimeBetween(
             Long merchantId, LocalDateTime start, LocalDateTime end) {
         return accountFlowMapper.selectList(new QueryWrapper<AccountFlowEntity>()

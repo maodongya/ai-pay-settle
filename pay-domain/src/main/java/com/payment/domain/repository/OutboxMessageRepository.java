@@ -27,4 +27,7 @@ public interface OutboxMessageRepository {
 
     /** 按业务键查询（补偿 Job 判断是否已有 Outbox） */
     boolean existsByBizKey(String bizKey);
+
+    /** 单 SQL 标记已发送（短事务，merchantId 精准路由） */
+    int markSentByIdAndMerchantId(Long id, Long merchantId);
 }
