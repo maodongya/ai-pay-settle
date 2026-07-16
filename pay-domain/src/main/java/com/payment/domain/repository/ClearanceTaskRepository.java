@@ -14,6 +14,13 @@ public interface ClearanceTaskRepository {
     /** 保存或更新清算任务 */
     ClearanceTaskEntity save(ClearanceTaskEntity entity);
 
+    /** 幂等插入任务，已存在返回 false */
+    boolean insertIfAbsent(String billNo, Long merchantId, int shardId, Integer status, LocalDateTime now);
+
+    /** 将 FAILED 重置为 PENDING，成功返回 true */
+    boolean resetToPending(String billNo, Long merchantId, Integer failedStatus,
+                           Integer pendingStatus, int maxRetry, LocalDateTime now);
+
     /** 按账单号查询（带分片路由） */
     Optional<ClearanceTaskEntity> findByBillNo(String billNo);
 

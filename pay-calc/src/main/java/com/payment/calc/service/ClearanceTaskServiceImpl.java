@@ -21,7 +21,6 @@ import com.payment.mq.config.PayMqProperties; // MQ 开关
 import com.payment.mq.exception.NonRetryableException; // 不可 MQ 重试异常
 import org.slf4j.Logger; // 日志接口
 import org.slf4j.LoggerFactory; // 日志工厂
-import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.payment.domain.support.ShardScanSupport;
 import java.time.LocalDateTime; // 本地日期时间
 import java.util.List; // 列表
@@ -73,22 +72,12 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     /**
      * 创建清算任务，已存在则跳过。
      */
-    @Override // 实现接口方法
-    @DSTransactional // 多数据源
+    @Override
     @DbRateLimit(layer = DbRateLimitLayer.CALC)
     public void createTask(String billNo, Long merchantId) {
-        if (clearanceTaskRepository.findByBillNoAndMerchantId(billNo, merchantId).isPresent()) { // 任务已存在
-            return; // 直接返回（幂等）
-        }
-        ClearanceTaskEntity task = new ClearanceTaskEntity(); // 创建任务实体
-        task.billNo = billNo; // 账单号
-        task.merchantId = merchantId; // 商户 ID
-        task.shardId = ShardRouter.shardId(merchantId); // 分片 ID，与 Queue 数 16 对齐
-        task.status = TaskStatus.PENDING.getCode(); // 待处理状态
-        task.retryCount = 0; // 重试次数归零
-        task.createTime = LocalDateTime.now(); // 创建时间
-        task.updateTime = LocalDateTime.now(); // 更新时间
-        clearanceTaskRepository.save(task); // 保存任务
+        clearanceTaskRepository.insertIfAbsent(
+                billNo, merchantId, ShardRouter.shardId(merchantId),
+                TaskStatus.PENDING.getCode(), LocalDateTime.now());
     }
 
     /**
@@ -132,8 +121,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
 
             try { // 阶段 2+3
                 long coreStart = clearanceTaskMetrics.nanoTime(); // 阶段 2 起点
-                FeeCalcResultDTO feeResult = clearanceTaskTxSupport.runFeeCalc(bill, relation); // 计费（短事务）
-                clearanceTaskTxSupport.runSplitDetail(feeResult, relation); // 分账（独立短事务）
+                clearanceTaskTxSupport.runFeeAndSplit(bill, relation); // PR-E：计费+分账合并短事务
                 clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FEE_SPLIT, coreStart); // 记录 fee_split 耗时
 
                 long finStart = clearanceTaskMetrics.nanoTime(); // 阶段 3 起点
@@ -194,20 +182,20 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
      * 抢占失败时的幂等与 DEAD 处理（避免 MQ L1 与 L2 双重重试浪费）。
      */
     private void handleUnclaimed(String billNo, Long merchantId) {
-        Optional<ClearanceTaskEntity> opt = clearanceTaskRepository.findByBillNoAndMerchantId(billNo, merchantId);
-        if (opt.isEmpty()) { // 任务不存在
-            return; // 忽略
+        Optional<Integer> statusOpt = clearanceTaskRepository.findStatusByBillNoAndMerchantId(billNo, merchantId);
+        if (statusOpt.isEmpty()) {
+            return;
         }
-        ClearanceTaskEntity task = opt.get(); // 取出任务
-        if (task.status == TaskStatus.SUCCESS.getCode()) { // 已成功
-            return; // 幂等 ACK
+        int status = statusOpt.get();
+        if (status == TaskStatus.SUCCESS.getCode()) {
+            return;
         }
-        if (task.status == TaskStatus.DEAD.getCode()) { // 已 DEAD
+        if (status == TaskStatus.DEAD.getCode()) {
             log.warn("clearance skip dead task billNo={}", billNo);
-            return; // 直接 ACK，避免 RETRY/DLQ 反复消费
+            return;
         }
-        if (task.status == TaskStatus.RUNNING.getCode()) { // 其他线程执行中
-            return; // 不重复执行
+        if (status == TaskStatus.RUNNING.getCode()) {
+            return;
         }
     }
 
@@ -220,13 +208,16 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
         List<ClearanceTaskEntity> tasks = ShardScanSupport.collectAcrossShards(shardId ->
                 clearanceTaskRepository.findFailedReadyForRetryByShard(
                         TaskStatus.FAILED.getCode(), MAX_RETRY, LocalDateTime.now(), shardId, perShard));
-        tasks.stream().limit(limit).forEach(t -> { // 限制批量
-            t.status = TaskStatus.PENDING.getCode(); // 重置为待处理
-            clearanceTaskRepository.save(t); // 保存任务
-            if (payMqProperties.isClearanceViaMq()) { // MQ 模式
-                clearanceTaskPublisher.publish(t.billNo, t.merchantId); // 发 MQ 而非 sync execute
-            } else { // 同步模式
-                executeTask(t.billNo, t.merchantId); // 本地直接执行
+        tasks.stream().limit(limit).forEach(t -> {
+            if (!clearanceTaskRepository.resetToPending(
+                    t.billNo, t.merchantId, TaskStatus.FAILED.getCode(),
+                    TaskStatus.PENDING.getCode(), MAX_RETRY, LocalDateTime.now())) {
+                return;
+            }
+            if (payMqProperties.isClearanceViaMq()) {
+                clearanceTaskPublisher.publish(t.billNo, t.merchantId);
+            } else {
+                executeTask(t.billNo, t.merchantId);
             }
         });
     }
@@ -237,14 +228,18 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     private void activateWaitingRefunds(String clearedBillNo) {
         List<TradeBillEntity> waiting = tradeBillRepository.findByStatusAndOriginBillNo( // 查询等待原单的退款
                 BillStatus.WAIT_ORIGIN.getCode(), clearedBillNo);
-        for (TradeBillEntity refund : waiting) { // 逐个激活
-            refund.status = BillStatus.PENDING.getCode(); // 更新为待处理
-            tradeBillRepository.save(refund); // 保存退款单
-            createTask(refund.billNo, refund.merchantId); // 创建清算任务
-            if (payMqProperties.isClearanceViaMq()) { // MQ 模式
-                clearanceTaskPublisher.publish(refund.billNo, refund.merchantId); // 异步清算
-            } else { // 同步模式
-                executeTask(refund.billNo, refund.merchantId); // 本地执行
+        for (TradeBillEntity refund : waiting) {
+            int updated = tradeBillRepository.updateStatusByBillNoAndMerchantId(
+                    refund.billNo, refund.merchantId,
+                    BillStatus.WAIT_ORIGIN.getCode(), BillStatus.PENDING.getCode());
+            if (updated == 0) {
+                continue;
+            }
+            createTask(refund.billNo, refund.merchantId);
+            if (payMqProperties.isClearanceViaMq()) {
+                clearanceTaskPublisher.publish(refund.billNo, refund.merchantId);
+            } else {
+                executeTask(refund.billNo, refund.merchantId);
             }
         }
     }

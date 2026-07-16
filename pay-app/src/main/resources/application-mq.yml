@@ -10,8 +10,8 @@ pay:
     consumer:
       # 与 30 TPS 限流对齐
       access-thread-max: 6
-      calc-thread-max: 8
-      settlement-thread-max: 4
+      calc-thread-max: 10
+      settlement-thread-max: 6
       settlement-payment-thread-max: 2
       consume-timeout-minutes: 15
       pull-batch-size: 32
@@ -28,7 +28,7 @@ pay:
       inspect-cron: "0 */10 * * * ?"
   outbox:
     dispatch-interval-ms: 1000
-    dispatch-batch-size: 200
+    dispatch-batch-size: 300
   compensate:
     outbox-interval-ms: 600000
   db-rate-limit:

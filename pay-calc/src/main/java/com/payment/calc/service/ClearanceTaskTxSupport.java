@@ -83,6 +83,16 @@ public class ClearanceTaskTxSupport {
     }
 
     /**
+     * 阶段 2：计费 + 分账合并为单次短事务，减少连接获取次数。
+     */
+    @DSTransactional
+    public FeeCalcResultDTO runFeeAndSplit(TradeBillEntity bill, AgentRelationDTO relation) {
+        FeeCalcResultDTO feeResult = runFeeCalc(bill, relation);
+        splitService.generateSplitDetail(feeResult, relation);
+        return feeResult;
+    }
+
+    /**
      * 阶段 2a：计费（短事务，释放连接后再分账）。
      */
     @DSTransactional // 多数据源短事务

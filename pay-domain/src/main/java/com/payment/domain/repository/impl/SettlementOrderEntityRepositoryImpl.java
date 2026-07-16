@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.payment.domain.entity.SettlementOrderEntity;
 import com.payment.domain.mapper.SettlementOrderMapper;
 import com.payment.domain.repository.SettlementOrderEntityRepository;
+import com.payment.common.enums.SettleOrderStatus;
 import com.payment.domain.service.ShardRouteService;
 import com.payment.domain.support.MapperHelper;
 import com.payment.domain.support.ShardQueryHelper;
@@ -76,5 +77,27 @@ public class SettlementOrderEntityRepositoryImpl implements SettlementOrderEntit
         ShardQueryHelper.bySettleNo(wrapper, originSettleNo, shardRouteService);
         wrapper.ne("status", status);
         return settlementOrderMapper.selectCount(wrapper) > 0;
+    }
+
+    @Override
+    public boolean existsPayingByMerchantId(Long merchantId) {
+        return settlementOrderMapper.selectCount(new QueryWrapper<SettlementOrderEntity>()
+                .eq("merchant_id", merchantId)
+                .eq("status", SettleOrderStatus.PAYING.getCode())) > 0;
+    }
+
+    @Override
+    public int updatePaymentResult(String settleNo, Long merchantId, Integer expectedStatus, Integer newStatus,
+                                   String channelTradeNo, String failReason, LocalDateTime now) {
+        return settlementOrderMapper.updatePaymentResult(
+                settleNo, merchantId, expectedStatus, newStatus, channelTradeNo, failReason, now);
+    }
+
+    @Override
+    public List<SettlementOrderEntity> findTopNByStatus(Integer status, int limit) {
+        return settlementOrderMapper.selectList(new QueryWrapper<SettlementOrderEntity>()
+                .eq("status", status)
+                .orderByAsc("update_time")
+                .last("LIMIT " + limit));
     }
 }

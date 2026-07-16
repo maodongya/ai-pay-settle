@@ -2,7 +2,6 @@ package com.payment.settlement.service; // 结算服务包
 
 import com.payment.api.dto.*; // 结算相关 DTO
 import com.payment.api.service.SettleAccountService; // 结算账户服务接口
-import com.payment.common.enums.AccountFlowOpType; // 账户流水操作类型枚举
 import com.payment.common.enums.SettleMode; // 结算模式枚举
 import com.payment.common.enums.SettleOrderStatus; // 结算订单状态枚举
 import com.payment.common.exception.BizException; // 业务异常
@@ -16,6 +15,7 @@ import com.payment.domain.service.ShardRouteService;
 import com.payment.control.service.AlertService; // 告警服务
 import com.payment.settlement.account.AccountOperator; // 账户操作组件
 import com.payment.settlement.channel.MockPaymentChannel; // 模拟支付渠道
+import com.payment.settlement.support.SettleAccountTxSupport;
 import org.slf4j.Logger; // 日志接口
 import org.slf4j.LoggerFactory; // 日志工厂
 import org.springframework.stereotype.Service; // Spring 服务注解
@@ -44,6 +44,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     private final AlertService alertService; // 告警服务
     private final ShardRouteService shardRouteService; // 分片路由
     private final BizSeqGenerator seqGenerator; // 单号生成器（Redis/本地）
+    private final SettleAccountTxSupport settleAccountTxSupport; // 短事务入账/回调
 
     /**
      * 构造注入依赖。
@@ -57,7 +58,8 @@ public class SettleAccountServiceImpl implements SettleAccountService {
                                     MockPaymentChannel paymentChannel,
                                     AlertService alertService,
                                     ShardRouteService shardRouteService,
-                                    BizSeqGenerator seqGenerator) {
+                                    BizSeqGenerator seqGenerator,
+                                    SettleAccountTxSupport settleAccountTxSupport) {
         this.accountOperator = accountOperator; // 赋值账户操作
         this.accountRepository = accountRepository; // 赋值账户仓储
         this.contractRepository = contractRepository; // 赋值合约仓储
@@ -68,35 +70,16 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         this.alertService = alertService; // 赋值告警服务
         this.shardRouteService = shardRouteService; // 分片路由
         this.seqGenerator = seqGenerator;
+        this.settleAccountTxSupport = settleAccountTxSupport;
     }
 
     /**
      * 商户入账，优先冲抵挂账。
      */
-    @Override // 实现接口方法
-    @Transactional // 开启事务
+    @Override
     @DbRateLimit(layer = DbRateLimitLayer.SETTLEMENT)
     public void creditBalance(Long merchantId, String billNo, BigDecimal amount) {
-        BigDecimal remain = amount; // 剩余待入账金额
-        List<MerchantPayableSuspendEntity> suspends = suspendRepository // 查询未结清挂账
-                .findByMerchantIdAndStatusOrderByCreateTimeAsc(merchantId, 0);
-        for (MerchantPayableSuspendEntity suspend : suspends) { // 逐笔冲抵
-            BigDecimal open = suspend.suspendAmount.subtract(suspend.settledAmount); // 未结清金额
-            if (open.signum() <= 0) { // 已结清
-                continue; // 跳过
-            }
-            BigDecimal deduct = remain.min(open); // 本次冲抵金额
-            if (!suspendRepository.applySettlementOffset(suspend.id, merchantId, deduct)) { // 单 SQL 冲抵
-                continue; // 并发冲突时跳过
-            }
-            remain = remain.subtract(deduct); // 扣减剩余金额
-            if (remain.signum() == 0) { // 全部用于冲抵
-                return; // 结束
-            }
-        }
-        if (remain.signum() > 0) { // 仍有剩余
-            accountOperator.credit(merchantId, billNo, remain, AccountFlowOpType.CREDIT); // 入账到待结算余额
-        }
+        settleAccountTxSupport.creditBalance(merchantId, billNo, amount);
     }
 
     /**
@@ -162,9 +145,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
             throw BizException.of(ErrorCode.BELOW_MIN_WITHDRAW);
         }
 
-        List<SettlementOrderEntity> paying = settlementOrderRepository.findByMerchantIdAndStatus(merchantId, // 查询支付中订单
-                SettleOrderStatus.PAYING.getCode());
-        if (!paying.isEmpty()) { // 有支付中订单
+        if (settlementOrderRepository.existsPayingByMerchantId(merchantId)) {
             throw BizException.of(ErrorCode.PAYMENT_IN_PROGRESS);
         }
 
@@ -216,33 +197,20 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     /**
      * 处理支付渠道回调。
      */
-    @Override // 实现接口方法
-    @Transactional // 开启事务
+    @Override
     @DbRateLimit(layer = DbRateLimitLayer.SETTLEMENT)
     public void handlePaymentCallback(PaymentCallbackDTO callback) {
-        SettlementOrderEntity order = settlementOrderRepository.findBySettleNo(callback.settleNo) // 查询结算订单
-                .orElseThrow(() -> BizException.of(ErrorCode.INVALID_PARAM, "settle not found")); // 订单不存在
+        SettlementOrderEntity order = settlementOrderRepository.findBySettleNo(callback.settleNo)
+                .orElseThrow(() -> BizException.of(ErrorCode.INVALID_PARAM, "settle not found"));
 
-        if (order.status == SettleOrderStatus.SUCCESS.getCode()) { // 已成功
-            return; // 幂等返回
+        if (order.status == SettleOrderStatus.SUCCESS.getCode()) {
+            return;
         }
 
-        if ("SUCCESS".equalsIgnoreCase(callback.status)) { // 支付成功
-            accountOperator.deductFrozen(order.merchantId, order.settleNo, order.settleAmount); // 扣减冻结余额
-            order.status = SettleOrderStatus.SUCCESS.getCode(); // 更新为成功
-            order.channelTradeNo = callback.channelTradeNo; // 记录渠道流水号
-        } else { // 支付失败
-            accountOperator.unfreeze(order.merchantId, order.settleNo, order.settleAmount); // 解冻余额
-            order.status = SettleOrderStatus.FAILED.getCode(); // 更新为失败
-            order.failReason = callback.failReason; // 记录失败原因
-            alertService.send(AlertService.PAYMENT_FAIL, order.settleNo + ": " + callback.failReason); // 发送告警
+        boolean success = settleAccountTxSupport.applyPaymentCallback(order, callback);
+        if (!success) {
+            alertService.send(AlertService.PAYMENT_FAIL, order.settleNo + ": " + callback.failReason);
         }
-        order.updateTime = LocalDateTime.now(); // 更新时间
-        settlementOrderRepository.save(order); // 保存订单
-
-        int withdrawStatus = "SUCCESS".equalsIgnoreCase(callback.status) ? 2 : 3; // 2 成功 3 失败
-        withdrawApplyRepository.updateStatusBySettleNoAndMerchantId(
-                order.settleNo, order.merchantId, withdrawStatus); // 单 SQL 更新提现申请
     }
 
     /**
@@ -287,10 +255,8 @@ public class SettleAccountServiceImpl implements SettleAccountService {
             return false; // 跳过
         }
 
-        List<SettlementOrderEntity> paying = settlementOrderRepository.findByMerchantIdAndStatus( // 查询支付中订单
-                account.merchantId, SettleOrderStatus.PAYING.getCode());
-        if (!paying.isEmpty()) { // 有支付中订单
-            return false; // 跳过
+        if (settlementOrderRepository.existsPayingByMerchantId(account.merchantId)) {
+            return false;
         }
 
         BigDecimal amount = account.waitBalance; // 全额结算
@@ -317,15 +283,13 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     /**
      * 重试失败的支付订单。
      */
-    @Override // 实现接口方法
-    @Transactional // 开启事务
+    @Override
+    @Transactional
     public void retryFailedPayments(int limit) {
-        List<SettlementOrderEntity> failed = settlementOrderRepository.findByStatus(SettleOrderStatus.FAILED.getCode()); // 查询失败订单
-        int retried = 0; // 重试计数
-        for (SettlementOrderEntity order : failed) { // 逐个处理
-            if (retried >= limit) { // 达到上限
-                break; // 停止
-            }
+        List<SettlementOrderEntity> failed = settlementOrderRepository.findTopNByStatus(
+                SettleOrderStatus.FAILED.getCode(), limit);
+        int retried = 0;
+        for (SettlementOrderEntity order : failed) {
             if (settlementOrderRepository.existsByOriginSettleNoAndStatusNot(order.settleNo, SettleOrderStatus.FAILED.getCode())) { // 已有重试订单
                 continue; // 跳过
             }

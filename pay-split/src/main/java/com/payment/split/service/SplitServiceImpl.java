@@ -57,14 +57,15 @@ public class SplitServiceImpl implements SplitService {
     /**
      * 根据费用计算结果生成分账明细及相关凭证。
      */
-    @Override // 实现接口方法
+    @Override
     @DSTransactional
     public void generateSplitDetail(FeeCalcResultDTO calcResult, AgentRelationDTO relation) {
-        if (splitDetailRepository.existsByBillNo(calcResult.billNo)) { // 分账已存在
-            return; // 幂等返回
+        if (splitDetailRepository.existsByBillNo(calcResult.billNo)) {
+            ensureOutboxIfNeeded(calcResult);
+            return;
         }
 
-        List<SplitDetailEntity> details = buildDetails(calcResult, relation); // 构建分账明细
+        List<SplitDetailEntity> details = buildDetails(calcResult, relation);
         splitDetailRepository.saveAll(details); // 批量保存明细
 
         if (!accountVoucherRepository.existsByBillNo(calcResult.billNo)) { // 凭证不存在
@@ -83,6 +84,24 @@ public class SplitServiceImpl implements SplitService {
             outboxMessageRepository.save(outbox); // 保存消息
         }
         businessMetrics.recordSplitDone(calcResult.billNo, 0);
+    }
+
+    /** 分账已存在时仅补写缺失 Outbox，避免重试卡住结算 */
+    private void ensureOutboxIfNeeded(FeeCalcResultDTO calcResult) {
+        if (calcResult.merchantIncome == null || calcResult.merchantIncome.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+        if (outboxMessageRepository.existsByBizKey(calcResult.billNo)) {
+            return;
+        }
+        OutboxMessageEntity outbox = new OutboxMessageEntity();
+        outbox.bizKey = calcResult.billNo;
+        outbox.merchantId = calcResult.merchantId;
+        outbox.topic = SETTLE_TOPIC;
+        outbox.payload = buildSettlePayload(calcResult);
+        outbox.status = 0;
+        outbox.createTime = LocalDateTime.now();
+        outboxMessageRepository.save(outbox);
     }
 
     /**

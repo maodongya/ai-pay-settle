@@ -4,6 +4,7 @@ import com.baomidou.dynamic.datasource.annotation.DS;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.payment.domain.datasource.DataSourceNames;
 import com.payment.domain.entity.ClearanceTaskEntity;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
@@ -17,6 +18,27 @@ import java.time.LocalDateTime;
 @Mapper
 @DS(DataSourceNames.DATA)
 public interface ClearanceTaskMapper extends BaseMapper<ClearanceTaskEntity> {
+
+    /** 幂等创建任务（bill_no 唯一，已存在则忽略） */
+    @Insert("INSERT IGNORE INTO clearance_task (bill_no, merchant_id, shard_id, status, retry_count, "
+            + "create_time, update_time) VALUES (#{billNo}, #{merchantId}, #{shardId}, #{status}, 0, "
+            + "#{now}, #{now})")
+    int insertIgnore(@Param("billNo") String billNo,
+                     @Param("merchantId") Long merchantId,
+                     @Param("shardId") int shardId,
+                     @Param("status") Integer status,
+                     @Param("now") LocalDateTime now);
+
+    /** 将 FAILED 任务重置为 PENDING（重试 Job 单 SQL） */
+    @Update("UPDATE clearance_task SET status = #{pendingStatus}, update_time = #{now} "
+            + "WHERE bill_no = #{billNo} AND merchant_id = #{merchantId} AND status = #{failedStatus} "
+            + "AND retry_count < #{maxRetry}")
+    int resetToPending(@Param("billNo") String billNo,
+                       @Param("merchantId") Long merchantId,
+                       @Param("failedStatus") Integer failedStatus,
+                       @Param("pendingStatus") Integer pendingStatus,
+                       @Param("maxRetry") int maxRetry,
+                       @Param("now") LocalDateTime now);
 
     /** 抢占任务（状态 CAS 更新） */
     @Update("UPDATE clearance_task SET status = #{newStatus}, update_time = #{now} "

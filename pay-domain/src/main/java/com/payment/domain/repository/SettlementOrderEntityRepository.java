@@ -32,4 +32,14 @@ public interface SettlementOrderEntityRepository {
 
     /** 按原结算单号判断是否存在非指定状态的记录 */
     boolean existsByOriginSettleNoAndStatusNot(String originSettleNo, Integer status);
+
+    /** 是否存在支付中结算单（提现/T1 前置检查） */
+    boolean existsPayingByMerchantId(Long merchantId);
+
+    /** 支付回调单 SQL 更新 */
+    int updatePaymentResult(String settleNo, Long merchantId, Integer expectedStatus, Integer newStatus,
+                            String channelTradeNo, String failReason, LocalDateTime now);
+
+    /** 按状态查询前 N 条失败单（重试 Job 限流） */
+    List<SettlementOrderEntity> findTopNByStatus(Integer status, int limit);
 }

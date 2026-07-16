@@ -34,6 +34,17 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
         return MapperHelper.save(clearanceTaskMapper, entity);
     }
 
+    @Override
+    public boolean insertIfAbsent(String billNo, Long merchantId, int shardId, Integer status, LocalDateTime now) {
+        return clearanceTaskMapper.insertIgnore(billNo, merchantId, shardId, status, now) > 0;
+    }
+
+    @Override
+    public boolean resetToPending(String billNo, Long merchantId, Integer failedStatus,
+                                  Integer pendingStatus, int maxRetry, LocalDateTime now) {
+        return clearanceTaskMapper.resetToPending(billNo, merchantId, failedStatus, pendingStatus, maxRetry, now) > 0;
+    }
+
     /** 通过 bill_route 补全 merchant_id 精准路由 */
     @Override
     public Optional<ClearanceTaskEntity> findByBillNo(String billNo) {
