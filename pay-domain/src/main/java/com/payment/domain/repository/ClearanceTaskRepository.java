@@ -15,12 +15,23 @@ public interface ClearanceTaskRepository {
 
     Optional<ClearanceTaskEntity> findByBillNo(String billNo);
 
+    Optional<ClearanceTaskEntity> findByBillNoAndMerchantId(String billNo, Long merchantId);
+
+    Optional<Integer> findStatusByBillNoAndMerchantId(String billNo, Long merchantId);
+
     List<ClearanceTaskEntity> findByStatusOrderByCreateTimeAsc(Integer status);
 
     /** 按分片查询指定状态任务（Job 扫描） */
     List<ClearanceTaskEntity> findByStatusAndShardIdOrderByCreateTimeAsc(Integer status, int shardId, int limit);
 
     int claimTask(String billNo, Long merchantId, Integer expectedStatus, Integer newStatus, LocalDateTime now);
+
+    int markSuccess(String billNo, Long merchantId, Integer expectedStatus, Integer newStatus, LocalDateTime now);
+
+    int markFailed(String billNo, Long merchantId, Integer expectedStatus, Integer failedStatus,
+                   Integer deadStatus, int maxRetry, String errorMsg, LocalDateTime nextRetryTime, LocalDateTime now);
+
+    int markDead(String billNo, Long merchantId, Integer newStatus, String errorMsg, LocalDateTime now);
 
     List<ClearanceTaskEntity> findByStatusAndRetryCountLessThan(Integer status, Integer maxRetry);
 

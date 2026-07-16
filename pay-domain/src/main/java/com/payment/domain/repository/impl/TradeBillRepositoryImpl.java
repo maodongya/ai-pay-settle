@@ -9,6 +9,7 @@ import com.payment.domain.support.MapperHelper;
 import com.payment.domain.support.ShardQueryHelper;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,6 +34,20 @@ public class TradeBillRepositoryImpl implements TradeBillRepository {
         QueryWrapper<TradeBillEntity> wrapper = new QueryWrapper<>();
         ShardQueryHelper.byBillNo(wrapper, billNo, shardRouteService);
         return Optional.ofNullable(tradeBillMapper.selectOne(wrapper));
+    }
+
+    @Override
+    public Optional<TradeBillEntity> findByBillNoAndMerchantId(String billNo, Long merchantId) {
+        return Optional.ofNullable(tradeBillMapper.selectOne(new QueryWrapper<TradeBillEntity>()
+                .eq("bill_no", billNo)
+                .eq("merchant_id", merchantId)));
+    }
+
+    @Override
+    public int updateStatusByBillNoAndMerchantId(String billNo, Long merchantId,
+                                               Integer expectedStatus, Integer newStatus) {
+        return tradeBillMapper.updateStatusByBillNoAndMerchantId(
+                billNo, merchantId, expectedStatus, newStatus, LocalDateTime.now());
     }
 
     @Override

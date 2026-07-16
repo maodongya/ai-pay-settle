@@ -11,7 +11,6 @@ import com.payment.common.enums.BillType; // 账单类型枚举
 import com.payment.common.enums.TaskStatus; // 任务状态枚举
 import com.payment.control.service.AlertService; // 告警服务
 import com.payment.control.service.ExceptionRecordService; // 异常工单服务
-import com.payment.domain.entity.ClearanceTaskEntity; // 清算任务实体
 import com.payment.domain.entity.TradeBillEntity; // 交易账单实体
 import com.payment.domain.repository.ClearanceTaskRepository; // 清算任务仓储
 import com.payment.domain.repository.TradeBillRepository; // 交易账单仓储
@@ -55,24 +54,32 @@ public class ClearanceTaskTxSupport {
     }
 
     /**
-     * 阶段 1：抢占任务并标记账单 CLEARING（短事务）。
+     * 阶段 1：抢占任务并标记账单 CLEARING（短事务）；返回 claim 上下文供后续阶段精确路由。
      */
     @DSTransactional // 多数据源短事务
-    public Optional<TradeBillEntity> claimAndMarkClearing(String billNo, Long merchantId) {
+    public Optional<ClearanceClaimContext> claimAndMarkClearing(String billNo, Long merchantId) {
         int claimed = clearanceTaskRepository.claimTask( // CAS 抢占 PENDING→RUNNING
                 billNo, merchantId, TaskStatus.PENDING.getCode(), TaskStatus.RUNNING.getCode(), LocalDateTime.now());
         if (claimed == 0) { // 抢占失败（幂等/并发）
             return Optional.empty(); // 返回空，由上层 ACK
         }
-        Optional<TradeBillEntity> billOpt = tradeBillRepository.findByBillNo(billNo); // 查询账单
+        Optional<TradeBillEntity> billOpt = tradeBillRepository.findByBillNoAndMerchantId(billNo, merchantId); // 按 merchantId 路由
         if (billOpt.isEmpty()) { // 账单不存在
-            markTaskDead(billNo, "trade bill not found"); // 标 DEAD
+            markTaskDead(billNo, merchantId, "trade bill not found"); // 标 DEAD
             return Optional.empty(); // 结束
         }
         TradeBillEntity bill = billOpt.get(); // 取出账单
-        bill.status = BillStatus.CLEARING.getCode(); // 更新为清算中
-        tradeBillRepository.save(bill); // 保存账单
-        return Optional.of(bill); // 返回账单供后续阶段使用
+        int billUpdated = tradeBillRepository.updateStatusByBillNoAndMerchantId( // 单 SQL 标 CLEARING
+                billNo, merchantId, BillStatus.PENDING.getCode(), BillStatus.CLEARING.getCode());
+        if (billUpdated == 0) { // 可能已被其他线程标为 CLEARING
+            int currentStatus = tradeBillRepository.findByBillNoAndMerchantId(billNo, merchantId)
+                    .map(b -> b.status).orElse(-1);
+            if (currentStatus != BillStatus.CLEARING.getCode()) {
+                throw new IllegalStateException("bill not ready for clearing billNo=" + billNo);
+            }
+        }
+        bill.status = BillStatus.CLEARING.getCode(); // 内存态与 DB 对齐
+        return Optional.of(new ClearanceClaimContext(bill, merchantId)); // 携带 merchantId 上下文
     }
 
     /**
@@ -102,55 +109,61 @@ public class ClearanceTaskTxSupport {
     }
 
     /**
-     * 阶段 3：标记账单 CLEARED、任务 SUCCESS（短事务）。
+     * 阶段 3：单 SQL 标记账单 CLEARED、任务 SUCCESS（短事务，merchantId 精确路由）。
      */
     @DSTransactional // 多数据源短事务
-    public void finalizeSuccess(TradeBillEntity bill) {
-        bill.status = BillStatus.CLEARED.getCode(); // 账单已清算
-        tradeBillRepository.save(bill); // 保存账单
-        ClearanceTaskEntity task = clearanceTaskRepository.findByBillNo(bill.billNo).orElseThrow(); // 查询任务
-        task.status = TaskStatus.SUCCESS.getCode(); // 任务成功
-        task.errorMsg = null; // 清空错误
-        task.nextRetryTime = null; // 清空下次重试
-        task.updateTime = LocalDateTime.now(); // 更新时间
-        clearanceTaskRepository.save(task); // 保存任务
-    }
-
-    /**
-     * 失败处理：更新任务 FAILED/DEAD 与账单 FAILED（独立短事务）。
-     */
-    @DSTransactional // 多数据源短事务
-    public void markFailure(TradeBillEntity bill, Exception e) {
-        ClearanceTaskEntity task = clearanceTaskRepository.findByBillNo(bill.billNo).orElseThrow(); // 查询任务
-        task.status = TaskStatus.FAILED.getCode(); // 先标失败
-        task.retryCount = task.retryCount + 1; // 重试次数 +1
-        task.errorMsg = truncateError(e.getMessage()); // 截断错误信息
-        task.nextRetryTime = LocalDateTime.now().plus(backoffDuration(task.retryCount)); // 指数退避
-        if (task.retryCount >= MAX_RETRY) { // 超过最大重试
-            task.status = TaskStatus.DEAD.getCode(); // 标 DEAD
-            exceptionRecordService.openClearanceDead(bill.billNo, task.errorMsg); // 建工单
-            alertService.send(AlertService.CLEARANCE_DEAD, // P2 告警
-                    "billNo=" + bill.billNo + " err=" + task.errorMsg); // 告警内容
+    public void finalizeSuccess(ClearanceClaimContext ctx) {
+        String billNo = ctx.bill().billNo; // 账单号
+        Long merchantId = ctx.merchantId(); // 分片键
+        int billUpdated = tradeBillRepository.updateStatusByBillNoAndMerchantId( // PR-C3：单 SQL 更新账单
+                billNo, merchantId, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode());
+        if (billUpdated == 0) { // 状态不匹配
+            throw new IllegalStateException("finalize bill status mismatch billNo=" + billNo); // 明确失败
         }
-        task.updateTime = LocalDateTime.now(); // 更新时间
-        clearanceTaskRepository.save(task); // 保存任务
-        bill.status = BillStatus.FAILED.getCode(); // 账单失败
-        tradeBillRepository.save(bill); // 保存账单
+        int taskUpdated = clearanceTaskRepository.markSuccess( // PR-C3：单 SQL 更新任务
+                billNo, merchantId, TaskStatus.RUNNING.getCode(), TaskStatus.SUCCESS.getCode(), LocalDateTime.now());
+        if (taskUpdated == 0) { // 任务非 RUNNING
+            throw new IllegalStateException("finalize task status mismatch billNo=" + billNo); // 明确失败
+        }
     }
 
     /**
-     * 账单缺失等场景：将任务标 DEAD。
+     * 失败处理：单 SQL 更新任务 FAILED/DEAD 与账单 FAILED（merchantId 精确路由）。
      */
     @DSTransactional // 多数据源短事务
-    public void markTaskDead(String billNo, String reason) {
-        clearanceTaskRepository.findByBillNo(billNo).ifPresent(task -> { // 任务存在则处理
-            task.status = TaskStatus.DEAD.getCode(); // 标 DEAD
-            task.errorMsg = truncateError(reason); // 记录原因
-            task.nextRetryTime = null; // 清空重试时间
-            task.updateTime = LocalDateTime.now(); // 更新时间
-            clearanceTaskRepository.save(task); // 保存任务
-            exceptionRecordService.openClearanceDead(billNo, task.errorMsg); // 建工单
-        });
+    public void markFailure(ClearanceClaimContext ctx, Exception e) {
+        String billNo = ctx.bill().billNo; // 账单号
+        Long merchantId = ctx.merchantId(); // 分片键
+        int retryCount = clearanceTaskRepository.findByBillNoAndMerchantId(billNo, merchantId)
+                .map(task -> task.retryCount).orElse(0); // 当前重试次数
+        LocalDateTime nextRetry = LocalDateTime.now().plus(backoffDuration(retryCount + 1)); // 退避时间
+        String errorMsg = truncateError(e.getMessage()); // 截断错误
+        int updated = clearanceTaskRepository.markFailed( // 单 SQL 递增 retry 并标 FAILED/DEAD
+                billNo, merchantId, TaskStatus.RUNNING.getCode(),
+                TaskStatus.FAILED.getCode(), TaskStatus.DEAD.getCode(),
+                MAX_RETRY, errorMsg, nextRetry, LocalDateTime.now());
+        if (updated == 0) { // 任务非 RUNNING
+            throw new IllegalStateException("markFailure task status mismatch billNo=" + billNo);
+        }
+        if (retryCount + 1 >= MAX_RETRY) { // 刚进入 DEAD
+            exceptionRecordService.openClearanceDead(billNo, errorMsg); // 建工单
+            alertService.send(AlertService.CLEARANCE_DEAD, // P2 告警
+                    "billNo=" + billNo + " err=" + errorMsg); // 告警内容
+        }
+        tradeBillRepository.updateStatusByBillNoAndMerchantId( // 账单标 FAILED
+                billNo, merchantId, BillStatus.CLEARING.getCode(), BillStatus.FAILED.getCode());
+    }
+
+    /**
+     * 账单缺失等场景：将任务标 DEAD（merchantId 精确路由）。
+     */
+    @DSTransactional // 多数据源短事务
+    public void markTaskDead(String billNo, Long merchantId, String reason) {
+        int updated = clearanceTaskRepository.markDead( // 单 SQL 标 DEAD
+                billNo, merchantId, TaskStatus.DEAD.getCode(), truncateError(reason), LocalDateTime.now());
+        if (updated > 0) { // 更新成功
+            exceptionRecordService.openClearanceDead(billNo, truncateError(reason)); // 建工单
+        }
     }
 
     /** 截断错误信息，避免超出 VARCHAR(512) */

@@ -102,15 +102,22 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
         try { // 主流程
             Long resolvedMerchantId = resolveMerchantId(billNo, merchantId); // 解析分片键
 
+            if (shouldSkipTerminalTask(billNo, resolvedMerchantId)) { // PR-C2：终态任务快速跳过
+                clearanceTaskMetrics.recordSkip(); // 跳过计数
+                return; // ACK，避免 claim 空转
+            }
+
             long claimStart = clearanceTaskMetrics.nanoTime(); // 阶段 1 起点
-            Optional<TradeBillEntity> billOpt = clearanceTaskTxSupport.claimAndMarkClearing(billNo, resolvedMerchantId); // 抢占+标 CLEARING
+            Optional<ClearanceClaimContext> claimOpt =
+                    clearanceTaskTxSupport.claimAndMarkClearing(billNo, resolvedMerchantId); // 抢占+标 CLEARING
             clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_CLAIM, claimStart); // 记录 claim 耗时
-            if (billOpt.isEmpty()) { // 未抢到或已处理
-                handleUnclaimed(billNo); // 幂等/DEAD 短路
+            if (claimOpt.isEmpty()) { // 未抢到或已处理
+                handleUnclaimed(billNo, resolvedMerchantId); // 幂等/DEAD 短路
                 clearanceTaskMetrics.recordSkip(); // 跳过计数
                 return; // ACK 结束
             }
-            TradeBillEntity bill = billOpt.get(); // 取出账单
+            ClearanceClaimContext claimCtx = claimOpt.get(); // claim 上下文
+            TradeBillEntity bill = claimCtx.bill(); // 取出账单
 
             // 主数据走 Redis 缓存，放在短事务之外，减少持连期间的 config 往返
             AgentRelationDTO relation = merchantValidateService.loadRelation(bill.merchantId); // 加载代理关系
@@ -121,7 +128,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
                 clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FEE_SPLIT, coreStart); // 记录 fee_split 耗时
 
                 long finStart = clearanceTaskMetrics.nanoTime(); // 阶段 3 起点
-                clearanceTaskTxSupport.finalizeSuccess(bill); // 标 CLEARED+SUCCESS
+                clearanceTaskTxSupport.finalizeSuccess(claimCtx); // 标 CLEARED+SUCCESS
                 clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FINALIZE, finStart); // 记录 finalize 耗时
 
                 businessMetrics.recordThroughput(PayBusinessMetrics.STAGE_CLEARANCE_DONE, true); // 业务吞吐指标
@@ -132,7 +139,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             } catch (Exception e) { // 可重试业务失败
                 log.error("clearance failed billNo={}", billNo, e); // 错误日志
                 long failStart = clearanceTaskMetrics.nanoTime(); // 失败处理起点
-                clearanceTaskTxSupport.markFailure(bill, e); // 标 FAILED/DEAD
+                clearanceTaskTxSupport.markFailure(claimCtx, e); // 标 FAILED/DEAD
                 clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FAIL, failStart); // 记录 fail 耗时
             }
         } finally { // 无论成败记录整单耗时
@@ -156,10 +163,29 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     }
 
     /**
+     * PR-C2：终态任务（SUCCESS/DEAD）在 claim 前快速跳过，减少脏 MQ 空转。
+     */
+    private boolean shouldSkipTerminalTask(String billNo, Long merchantId) {
+        Optional<Integer> statusOpt = clearanceTaskRepository.findStatusByBillNoAndMerchantId(billNo, merchantId);
+        if (statusOpt.isEmpty()) {
+            return false;
+        }
+        int status = statusOpt.get();
+        if (status == TaskStatus.SUCCESS.getCode()) {
+            return true;
+        }
+        if (status == TaskStatus.DEAD.getCode()) {
+            log.debug("clearance fast-skip dead task billNo={}", billNo);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 抢占失败时的幂等与 DEAD 处理（避免 MQ L1 与 L2 双重重试浪费）。
      */
-    private void handleUnclaimed(String billNo) {
-        Optional<ClearanceTaskEntity> opt = clearanceTaskRepository.findByBillNo(billNo); // 查询任务
+    private void handleUnclaimed(String billNo, Long merchantId) {
+        Optional<ClearanceTaskEntity> opt = clearanceTaskRepository.findByBillNoAndMerchantId(billNo, merchantId);
         if (opt.isEmpty()) { // 任务不存在
             return; // 忽略
         }

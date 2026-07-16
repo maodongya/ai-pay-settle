@@ -39,6 +39,18 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
     }
 
     @Override
+    public Optional<ClearanceTaskEntity> findByBillNoAndMerchantId(String billNo, Long merchantId) {
+        return Optional.ofNullable(clearanceTaskMapper.selectOne(new QueryWrapper<ClearanceTaskEntity>()
+                .eq("bill_no", billNo)
+                .eq("merchant_id", merchantId)));
+    }
+
+    @Override
+    public Optional<Integer> findStatusByBillNoAndMerchantId(String billNo, Long merchantId) {
+        return Optional.ofNullable(clearanceTaskMapper.selectStatusByBillNoAndMerchantId(billNo, merchantId));
+    }
+
+    @Override
     public List<ClearanceTaskEntity> findByStatusOrderByCreateTimeAsc(Integer status) {
         return clearanceTaskMapper.selectList(new QueryWrapper<ClearanceTaskEntity>()
                 .eq("status", status)
@@ -58,6 +70,27 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
     @Transactional
     public int claimTask(String billNo, Long merchantId, Integer expectedStatus, Integer newStatus, LocalDateTime now) {
         return clearanceTaskMapper.claimTask(billNo, merchantId, expectedStatus, newStatus, now);
+    }
+
+    @Override
+    @Transactional
+    public int markSuccess(String billNo, Long merchantId, Integer expectedStatus, Integer newStatus, LocalDateTime now) {
+        return clearanceTaskMapper.markSuccess(billNo, merchantId, expectedStatus, newStatus, now);
+    }
+
+    @Override
+    @Transactional
+    public int markFailed(String billNo, Long merchantId, Integer expectedStatus, Integer failedStatus,
+                          Integer deadStatus, int maxRetry, String errorMsg,
+                          LocalDateTime nextRetryTime, LocalDateTime now) {
+        return clearanceTaskMapper.markFailed(billNo, merchantId, expectedStatus, failedStatus, deadStatus,
+                maxRetry, errorMsg, nextRetryTime, now);
+    }
+
+    @Override
+    @Transactional
+    public int markDead(String billNo, Long merchantId, Integer newStatus, String errorMsg, LocalDateTime now) {
+        return clearanceTaskMapper.markDead(billNo, merchantId, newStatus, errorMsg, now);
     }
 
     @Override

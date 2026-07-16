@@ -14,6 +14,11 @@ public interface TradeBillRepository {
 
     Optional<TradeBillEntity> findByBillNo(String billNo);
 
+    Optional<TradeBillEntity> findByBillNoAndMerchantId(String billNo, Long merchantId);
+
+    int updateStatusByBillNoAndMerchantId(String billNo, Long merchantId,
+                                          Integer expectedStatus, Integer newStatus);
+
     List<TradeBillEntity> findByStatusAndOriginBillNo(Integer status, String originBillNo);
 
     List<TradeBillEntity> findByStatus(Integer status);
