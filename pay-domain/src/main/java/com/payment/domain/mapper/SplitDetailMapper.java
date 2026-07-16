@@ -10,6 +10,10 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+/**
+ * 分账明细表 Mapper，映射 split_detail 表。
+ * 数据源：data 分片库。
+ */
 @Mapper
 @DS(DataSourceNames.DATA)
 public interface SplitDetailMapper extends BaseMapper<SplitDetailEntity> {

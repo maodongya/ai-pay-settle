@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+/**
+ * {@link SettleRouteRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class SettleRouteRepositoryImpl implements SettleRouteRepository {
 
@@ -16,6 +19,7 @@ public class SettleRouteRepositoryImpl implements SettleRouteRepository {
         this.settleRouteMapper = settleRouteMapper;
     }
 
+    /** settle_no 为业务主键，需区分 insert 与 update */
     @Override
     public SettleRouteEntity save(SettleRouteEntity entity) {
         SettleRouteEntity existing = settleRouteMapper.selectById(entity.settleNo);

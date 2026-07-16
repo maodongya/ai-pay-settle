@@ -12,10 +12,16 @@ public class OutboxDispatchTxSupport {
 
     private final OutboxMessageRepository outboxMessageRepository;
 
+    /**
+     * 构造注入 Outbox 仓储。
+     */
     public OutboxDispatchTxSupport(OutboxMessageRepository outboxMessageRepository) {
         this.outboxMessageRepository = outboxMessageRepository;
     }
 
+    /**
+     * 短事务标记 Outbox 已发送（status=1），返回是否更新成功。
+     */
     @Transactional
     public boolean markSent(Long id, Long merchantId) {
         return outboxMessageRepository.markSentByIdAndMerchantId(id, merchantId) > 0;

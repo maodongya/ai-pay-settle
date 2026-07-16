@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * {@link WithdrawApplyRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class WithdrawApplyRepositoryImpl implements WithdrawApplyRepository {
 

@@ -23,6 +23,9 @@ public class BillRouteCompensateJob {
     private final ShardRouteService shardRouteService;
     private final boolean pauseJobs;
 
+    /**
+     * 构造注入账单仓储、分片路由服务。
+     */
     public BillRouteCompensateJob(TradeBillRepository tradeBillRepository,
                                   ShardRouteService shardRouteService,
                                   @Value("${pay.loadtest.pause-jobs:false}") boolean pauseJobs) {
@@ -31,6 +34,9 @@ public class BillRouteCompensateJob {
         this.pauseJobs = pauseJobs;
     }
 
+    /**
+     * 定时扫描各分片近期账单，补写缺失的 bill_route 索引。
+     */
     @Scheduled(fixedDelayString = "${pay.compensate.bill-route-interval-ms:600000}")
     public void compensateMissingRoutes() {
         if (pauseJobs) {

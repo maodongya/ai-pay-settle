@@ -20,10 +20,16 @@ public class PayMqProduceMetrics {
     private final ConcurrentHashMap<String, Counter> failCounters = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Timer> timers = new ConcurrentHashMap<>();
 
+    /**
+     * 构造注入可选 MeterRegistry，无 Actuator 时降级为无指标模式。
+     */
     public PayMqProduceMetrics(ObjectProvider<MeterRegistry> registryProvider) {
         this.registry = registryProvider.getIfAvailable();
     }
 
+    /**
+     * 包裹生产动作，记录成功/失败计数与发送耗时。
+     */
     public void record(String topic, Runnable action) {
         if (registry == null) {
             action.run();
@@ -42,6 +48,9 @@ public class PayMqProduceMetrics {
         }
     }
 
+    /**
+     * 记录 Outbox 派发成败计数。
+     */
     public void recordOutboxDispatch(String topic, boolean success) {
         if (registry == null) {
             return;

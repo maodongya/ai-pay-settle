@@ -13,6 +13,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * {@link OutboxMessageRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
 
@@ -43,6 +46,7 @@ public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
                 .last("LIMIT " + limit));
     }
 
+    /** 按 merchant_id 取模过滤分片 */
     @Override
     public List<OutboxMessageEntity> findTopNByStatusAndShardIdOrderByCreateTimeAsc(
             Integer status, int shardId, int limit) {
@@ -72,6 +76,7 @@ public class OutboxMessageRepositoryImpl implements OutboxMessageRepository {
         return Duration.between(oldest.createTime, LocalDateTime.now()).getSeconds();
     }
 
+    /** 有路由时补 merchant_id 避免全分片广播 */
     @Override
     public boolean existsByBizKey(String bizKey) {
         // outbox 业务键列是 biz_key（非 bill_no）；有路由时补 merchant_id 避免广播

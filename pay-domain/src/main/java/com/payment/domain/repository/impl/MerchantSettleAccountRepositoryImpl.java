@@ -12,6 +12,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * {@link MerchantSettleAccountRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class MerchantSettleAccountRepositoryImpl implements MerchantSettleAccountRepository {
 

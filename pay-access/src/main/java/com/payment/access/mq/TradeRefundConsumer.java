@@ -29,17 +29,23 @@ public class TradeRefundConsumer implements MqMessageHandler {
     private final BillAccessService billAccessService; // 接入
     private final ObjectMapper objectMapper; // JSON
 
-    /** 构造 */
+    /** 构造注入接入服务与 JSON 工具 */
     public TradeRefundConsumer(@Lazy BillAccessService billAccessService, ObjectMapper objectMapper) {
         this.billAccessService = billAccessService; // 接入
         this.objectMapper = objectMapper; // JSON
     }
 
+    /**
+     * 返回本 Handler 监听的 Topic。
+     */
     @Override // Topic
     public String topic() {
         return MqTopics.TRADE_REFUND; // refund topic
     }
 
+    /**
+     * 反序列化退款账单，强制 billType=REFUND 后提交接入层。
+     */
     @Override // 处理
     public void handle(String payload) {
         try { // 解析退款单
@@ -67,7 +73,7 @@ public class TradeRefundConsumer implements MqMessageHandler {
         private final MqListenerInvoker invoker; // Invoker
         private final MqConsumerProperties consumerProperties;
 
-        /** 构造 */
+        /** 构造注入 Handler、Invoker 与消费线程配置 */
         public RefundRocketListener(TradeRefundConsumer delegate, MqListenerInvoker invoker,
                                     MqConsumerProperties consumerProperties) {
             this.delegate = delegate; // Handler
@@ -75,11 +81,17 @@ public class TradeRefundConsumer implements MqMessageHandler {
             this.consumerProperties = consumerProperties;
         }
 
+        /**
+         * 启动前应用消费线程数配置。
+         */
         @Override
         public void prepareStart(DefaultMQPushConsumer consumer) {
             MqConsumerThreadSupport.apply(consumer, consumerProperties.getAccessThreadMax(), "access-refund");
         }
 
+        /**
+         * RocketMQ 消息回调，经 Invoker 统一异常分类与指标埋点。
+         */
         @Override // 消息回调
         public void onMessage(String message) {
             invoker.invoke(MqTopics.TRADE_REFUND, () -> delegate.handle(message)); // wrap

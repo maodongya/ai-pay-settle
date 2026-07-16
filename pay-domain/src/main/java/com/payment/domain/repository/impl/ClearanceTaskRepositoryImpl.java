@@ -14,6 +14,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * {@link ClearanceTaskRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
 
@@ -31,6 +34,7 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
         return MapperHelper.save(clearanceTaskMapper, entity);
     }
 
+    /** 通过 bill_route 补全 merchant_id 精准路由 */
     @Override
     public Optional<ClearanceTaskEntity> findByBillNo(String billNo) {
         QueryWrapper<ClearanceTaskEntity> wrapper = new QueryWrapper<>();

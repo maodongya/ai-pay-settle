@@ -34,6 +34,9 @@ public class OutboxDispatchJob {
     private final PayMqProduceMetrics produceMetrics;
     private final int batchSize;
 
+    /**
+     * 构造注入 Outbox 仓储、事务支持、MQ 生产者与告警服务。
+     */
     public OutboxDispatchJob(OutboxMessageRepository outboxMessageRepository,
                              OutboxDispatchTxSupport outboxDispatchTxSupport,
                              PayMqProducer payMqProducer,
@@ -50,6 +53,9 @@ public class OutboxDispatchJob {
         this.batchSize = batchSize;
     }
 
+    /**
+     * 定时扫描 pending Outbox，先发 MQ 再短事务标记已发送。
+     */
     @Scheduled(fixedDelayString = "${pay.outbox.dispatch-interval-ms:5000}")
     public void dispatch() {
         if (!payMqProperties.isOutboxViaMq()) {

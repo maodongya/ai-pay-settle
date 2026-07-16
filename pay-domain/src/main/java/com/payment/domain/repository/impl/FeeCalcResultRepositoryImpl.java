@@ -11,6 +11,9 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+/**
+ * {@link FeeCalcResultRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class FeeCalcResultRepositoryImpl implements FeeCalcResultRepository {
 
@@ -28,6 +31,7 @@ public class FeeCalcResultRepositoryImpl implements FeeCalcResultRepository {
         return MapperHelper.save(feeCalcResultMapper, entity);
     }
 
+    /** 通过 bill_route 补全 merchant_id 精准路由 */
     @Override
     public Optional<FeeCalcResultEntity> findByBillNo(String billNo) {
         QueryWrapper<FeeCalcResultEntity> wrapper = new QueryWrapper<>();

@@ -32,6 +32,9 @@ public class AccountOperator {
     private final AccountFlowRepository accountFlowRepository;
     private final RedisDistributedLock distributedLock;
 
+    /**
+     * 构造注入账户仓储、流水仓储与分布式锁。
+     */
     public AccountOperator(MerchantSettleAccountRepository accountRepository,
                            AccountFlowRepository accountFlowRepository,
                            RedisDistributedLock distributedLock) {
@@ -40,6 +43,9 @@ public class AccountOperator {
         this.distributedLock = distributedLock;
     }
 
+    /**
+     * 商户入账：增加待结算余额并记录流水，幂等按 billNo+opType 去重。
+     */
     @Transactional
     public MerchantSettleAccountEntity credit(Long merchantId, String billNo, BigDecimal amount, AccountFlowOpType opType) {
         return withSettleLock(merchantId, () -> {
@@ -50,6 +56,9 @@ public class AccountOperator {
         });
     }
 
+    /**
+     * 冻结余额：从待结算余额转入冻结余额，用于提现/结算预扣。
+     */
     @Transactional
     public MerchantSettleAccountEntity freeze(Long merchantId, String settleNo, BigDecimal amount) {
         return withSettleLock(merchantId, () -> {
@@ -60,6 +69,9 @@ public class AccountOperator {
         });
     }
 
+    /**
+     * 解冻余额：将冻结金额退回待结算余额（如提现失败回滚）。
+     */
     @Transactional
     public MerchantSettleAccountEntity unfreeze(Long merchantId, String settleNo, BigDecimal amount) {
         return withSettleLock(merchantId, () -> {
@@ -70,6 +82,9 @@ public class AccountOperator {
         });
     }
 
+    /**
+     * 扣减冻结余额：结算打款成功后从冻结中扣除，不改动待结算余额。
+     */
     @Transactional
     public MerchantSettleAccountEntity deductFrozen(Long merchantId, String settleNo, BigDecimal amount) {
         return withSettleLock(merchantId, () -> {
@@ -80,6 +95,9 @@ public class AccountOperator {
         });
     }
 
+    /**
+     * 退款扣减：从待结算余额借记，幂等按 billNo+REFUND_DEBIT 去重。
+     */
     @Transactional
     public MerchantSettleAccountEntity debit(Long merchantId, String billNo, BigDecimal amount) {
         return withSettleLock(merchantId, () -> {

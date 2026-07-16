@@ -14,6 +14,13 @@ public final class MqConsumerThreadSupport {
     private MqConsumerThreadSupport() {
     }
 
+    /**
+     * 统一设置消费线程 min/max，避免注解默认值导致 YAML 降并发无效。
+     *
+     * @param consumer RocketMQ PushConsumer
+     * @param threads  目标线程数（至少 1）
+     * @param role     角色标识，用于日志
+     */
     public static void apply(DefaultMQPushConsumer consumer, int threads, String role) {
         int n = Math.max(1, threads);
         consumer.setConsumeThreadMin(n);

@@ -28,17 +28,23 @@ public class TradePayConsumer implements MqMessageHandler {
     private final BillAccessService billAccessService; // 接入业务
     private final ObjectMapper objectMapper; // JSON
 
-    /** 构造注入 */
+    /** 构造注入接入服务与 JSON 工具 */
     public TradePayConsumer(@Lazy BillAccessService billAccessService, ObjectMapper objectMapper) {
         this.billAccessService = billAccessService; // 接入服务
         this.objectMapper = objectMapper; // JSON 工具
     }
 
+    /**
+     * 返回本 Handler 监听的 Topic。
+     */
     @Override // Handler 接口：Topic
     public String topic() {
         return MqTopics.TRADE_PAY; // Local 模式路由键
     }
 
+    /**
+     * 反序列化交易账单并提交接入层（落库+触发清算）。
+     */
     @Override // Handler 接口：处理消息
     public void handle(String payload) {
         try { // 反序列化并提交
@@ -67,7 +73,7 @@ public class TradePayConsumer implements MqMessageHandler {
         private final MqListenerInvoker invoker; // 异常分类 + 指标
         private final MqConsumerProperties consumerProperties;
 
-        /** 构造注入 */
+        /** 构造注入 Handler、Invoker 与消费线程配置 */
         public PayRocketListener(TradePayConsumer delegate, MqListenerInvoker invoker,
                                  MqConsumerProperties consumerProperties) {
             this.delegate = delegate; // Handler
@@ -75,11 +81,17 @@ public class TradePayConsumer implements MqMessageHandler {
             this.consumerProperties = consumerProperties;
         }
 
+        /**
+         * 启动前应用消费线程数配置。
+         */
         @Override
         public void prepareStart(DefaultMQPushConsumer consumer) {
             MqConsumerThreadSupport.apply(consumer, consumerProperties.getAccessThreadMax(), "access-pay");
         }
 
+        /**
+         * RocketMQ 消息回调，经 Invoker 统一异常分类与指标埋点。
+         */
         @Override // 收到消息
         public void onMessage(String message) {
             invoker.invoke(MqTopics.TRADE_PAY, () -> delegate.handle(message)); // 统一 wrap

@@ -5,6 +5,9 @@ import com.payment.domain.mapper.BillRouteMapper;
 import com.payment.domain.repository.BillRouteRepository;
 import org.springframework.stereotype.Repository;
 
+/**
+ * {@link BillRouteRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class BillRouteRepositoryImpl implements BillRouteRepository {
 
@@ -14,6 +17,7 @@ public class BillRouteRepositoryImpl implements BillRouteRepository {
         this.billRouteMapper = billRouteMapper;
     }
 
+    /** bill_no 为业务主键，需区分 insert 与 update */
     @Override
     public BillRouteEntity save(BillRouteEntity entity) {
         // bill_no 为业务主键（IdType.INPUT），已赋值时 MapperHelper 会误走 updateById

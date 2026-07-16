@@ -48,6 +48,9 @@ public class TpsBalanceMonitorJob {
     private final Map<String, AtomicReference<Double>> gapHolders = new ConcurrentHashMap<>();
     private final AtomicReference<Double> lastTotalConsumeTps = new AtomicReference<>(0.0);
 
+    /**
+     * 构造注入 MQ 配置、TPS 阈值、告警服务与 MeterRegistry。
+     */
     public TpsBalanceMonitorJob(PayMqProperties payMqProperties,
                                 TpsMonitorProperties tpsProperties,
                                 AlertService alertService,
@@ -70,6 +73,9 @@ public class TpsBalanceMonitorJob {
                 .register(meterRegistry);
     }
 
+    /**
+     * 定时对照各 Topic 生产/消费 TPS，写入 Gap Gauge 并告警。
+     */
     @Scheduled(fixedDelayString = "${pay.monitor.tps.check-interval-ms:60000}")
     public void checkTpsBalance() {
         if (!payMqProperties.isEnabled() || meterRegistry == null) {

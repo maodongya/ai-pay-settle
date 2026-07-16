@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
+/**
+ * {@link FeeShareRuleRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class FeeShareRuleRepositoryImpl implements FeeShareRuleRepository {
 
@@ -21,6 +24,7 @@ public class FeeShareRuleRepositoryImpl implements FeeShareRuleRepository {
         this.feeShareRuleMapper = feeShareRuleMapper;
     }
 
+    /** 写入时清空规则缓存 */
     @Override
     @CacheEvict(cacheNames = CacheNames.FEE_RULES, allEntries = true)
     public FeeShareRuleEntity save(FeeShareRuleEntity entity) {

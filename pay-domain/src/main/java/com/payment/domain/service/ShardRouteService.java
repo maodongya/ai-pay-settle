@@ -24,12 +24,14 @@ public class ShardRouteService {
     private final BillRouteRepository billRouteRepository;
     private final SettleRouteRepository settleRouteRepository;
 
+    /** 构造注入路由仓储 */
     public ShardRouteService(BillRouteRepository billRouteRepository,
                              SettleRouteRepository settleRouteRepository) {
         this.billRouteRepository = billRouteRepository;
         this.settleRouteRepository = settleRouteRepository;
     }
 
+    /** 注册账单号到商户 ID 的路由映射 */
     public void registerBillRoute(String billNo, Long merchantId, Integer billType) {
         if (billRouteRepository.findByBillNo(billNo).isPresent()) {
             return;
@@ -42,6 +44,7 @@ public class ShardRouteService {
         billRouteRepository.save(route);
     }
 
+    /** 注册结算单号到商户 ID 的路由映射 */
     public void registerSettleRoute(String settleNo, Long merchantId) {
         if (settleRouteRepository.findBySettleNo(settleNo).isPresent()) {
             return;
@@ -53,15 +56,18 @@ public class ShardRouteService {
         settleRouteRepository.save(route);
     }
 
+    /** 按账单号查询商户 ID */
     public Optional<Long> findMerchantIdByBillNo(String billNo) {
         return billRouteRepository.findByBillNo(billNo).map(route -> route.merchantId);
     }
 
+    /** 按账单号查询商户 ID，不存在则抛业务异常 */
     public Long requireMerchantIdByBillNo(String billNo) {
         return findMerchantIdByBillNo(billNo)
                 .orElseThrow(() -> BizException.of(ErrorCode.INVALID_PARAM, "bill route not found: " + billNo));
     }
 
+    /** 按结算单号查询商户 ID */
     public Optional<Long> findMerchantIdBySettleNo(String settleNo) {
         return settleRouteRepository.findBySettleNo(settleNo).map(route -> route.merchantId);
     }

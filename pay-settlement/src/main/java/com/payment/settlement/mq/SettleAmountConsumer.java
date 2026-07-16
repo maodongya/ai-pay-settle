@@ -29,17 +29,23 @@ public class SettleAmountConsumer implements MqMessageHandler {
     private final SettleAccountService settleAccountService; // 账户服务
     private final ObjectMapper objectMapper; // JSON
 
-    /** 构造 */
+    /** 构造注入结算服务与 JSON 工具 */
     public SettleAmountConsumer(@Lazy SettleAccountService settleAccountService, ObjectMapper objectMapper) {
         this.settleAccountService = settleAccountService; // 账户
         this.objectMapper = objectMapper; // JSON
     }
 
+    /**
+     * 返回本 Handler 监听的 Topic。
+     */
     @Override // Topic
     public String topic() {
         return MqTopics.SETTLE_AMOUNT; // settle topic
     }
 
+    /**
+     * 解析 JSON 载荷，正向金额入账、负向金额退款扣减。
+     */
     @Override // 处理入账/扣款
     public void handle(String payload) {
         try { // 解析载荷
@@ -72,7 +78,7 @@ public class SettleAmountConsumer implements MqMessageHandler {
         private final MqListenerInvoker invoker; // Invoker
         private final MqConsumerProperties consumerProperties;
 
-        /** 构造 */
+        /** 构造注入 Handler、Invoker 与消费线程配置 */
         public RocketListener(SettleAmountConsumer delegate, MqListenerInvoker invoker,
                               MqConsumerProperties consumerProperties) {
             this.delegate = delegate; // Handler
@@ -80,11 +86,17 @@ public class SettleAmountConsumer implements MqMessageHandler {
             this.consumerProperties = consumerProperties;
         }
 
+        /**
+         * 启动前应用消费线程数配置。
+         */
         @Override
         public void prepareStart(DefaultMQPushConsumer consumer) {
             MqConsumerThreadSupport.apply(consumer, consumerProperties.getSettlementThreadMax(), "settlement");
         }
 
+        /**
+         * RocketMQ 消息回调，经 Invoker 统一异常分类与指标埋点。
+         */
         @Override // 回调
         public void onMessage(String message) {
             invoker.invoke(MqTopics.SETTLE_AMOUNT, () -> delegate.handle(message)); // wrap

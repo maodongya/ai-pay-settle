@@ -6,6 +6,10 @@ import com.payment.domain.datasource.DataSourceNames;
 import com.payment.domain.entity.BillRouteEntity;
 import org.apache.ibatis.annotations.Mapper;
 
+/**
+ * 账单路由表 Mapper，映射 bill_route 表。
+ * 数据源：config 配置库。
+ */
 @Mapper
 @DS(DataSourceNames.CONFIG)
 public interface BillRouteMapper extends BaseMapper<BillRouteEntity> {

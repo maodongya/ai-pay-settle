@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * {@link MerchantPayableSuspendRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class MerchantPayableSuspendRepositoryImpl implements MerchantPayableSuspendRepository {
 

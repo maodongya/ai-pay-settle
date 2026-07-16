@@ -15,12 +15,14 @@ public final class ShardScanSupport {
     private ShardScanSupport() {
     }
 
+    /** 遍历 16 个分片并执行回调 */
     public static void forEachShard(IntConsumer action) {
         for (int shardId = 0; shardId < ShardConstants.SHARD_COUNT; shardId++) {
             action.accept(shardId);
         }
     }
 
+    /** 遍历各分片查询并合并结果列表 */
     public static <T> List<T> collectAcrossShards(IntFunction<List<T>> supplier) {
         List<T> merged = new ArrayList<>();
         forEachShard(shardId -> merged.addAll(supplier.apply(shardId)));

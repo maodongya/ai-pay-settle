@@ -9,6 +9,9 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+/**
+ * {@link MerchantProfileRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class MerchantProfileRepositoryImpl implements MerchantProfileRepository {
 
@@ -18,6 +21,7 @@ public class MerchantProfileRepositoryImpl implements MerchantProfileRepository 
         this.merchantProfileMapper = merchantProfileMapper;
     }
 
+    /** 结果缓存，减少 config 库查询 */
     @Override
     @Cacheable(cacheNames = CacheNames.MERCHANT_PROFILE, key = "#merchantId", unless = "#result == null")
     public Optional<MerchantProfileEntity> findById(Long merchantId) {

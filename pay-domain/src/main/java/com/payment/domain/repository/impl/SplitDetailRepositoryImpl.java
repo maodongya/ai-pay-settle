@@ -13,6 +13,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * {@link SplitDetailRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class SplitDetailRepositoryImpl implements SplitDetailRepository {
 
@@ -30,6 +33,7 @@ public class SplitDetailRepositoryImpl implements SplitDetailRepository {
         return MapperHelper.save(splitDetailMapper, entity);
     }
 
+    /** 新记录批量 INSERT，已有主键走单条更新 */
     @Override
     public List<SplitDetailEntity> saveAll(List<SplitDetailEntity> entities) {
         if (entities == null || entities.isEmpty()) {

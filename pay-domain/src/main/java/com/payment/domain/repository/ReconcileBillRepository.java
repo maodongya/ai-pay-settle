@@ -10,7 +10,9 @@ import java.util.Optional;
  */
 public interface ReconcileBillRepository {
 
+    /** 保存或更新对账单 */
     ReconcileBillEntity save(ReconcileBillEntity entity);
 
+    /** 按商户 ID 与账单日期查询对账单 */
     Optional<ReconcileBillEntity> findByMerchantIdAndBillDate(Long merchantId, LocalDate billDate);
 }

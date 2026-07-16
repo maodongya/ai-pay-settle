@@ -9,8 +9,10 @@ import java.util.List;
  */
 public interface OutboxMessageRepository {
 
+    /** 保存或更新 Outbox 消息 */
     OutboxMessageEntity save(OutboxMessageEntity entity);
 
+    /** 按状态查询前 100 条，按创建时间升序 */
     List<OutboxMessageEntity> findTop100ByStatusOrderByCreateTimeAsc(Integer status);
 
     /** 按状态查询前 N 条，按创建时间升序（Outbox 批量派发） */

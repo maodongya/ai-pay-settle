@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+/**
+ * {@link AgentMerchantRelationRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class AgentMerchantRelationRepositoryImpl implements AgentMerchantRelationRepository {
 
@@ -19,6 +22,7 @@ public class AgentMerchantRelationRepositoryImpl implements AgentMerchantRelatio
         this.agentMerchantRelationMapper = agentMerchantRelationMapper;
     }
 
+    /** 结果缓存，减少 config 库查询 */
     @Override
     @Cacheable(cacheNames = CacheNames.AGENT_RELATION, key = "#merchantId", unless = "#result == null")
     public Optional<AgentMerchantRelationEntity> findFirstByMerchantIdOrderByRelIdDesc(Long merchantId) {

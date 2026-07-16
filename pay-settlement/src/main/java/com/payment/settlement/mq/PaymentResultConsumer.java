@@ -27,17 +27,23 @@ public class PaymentResultConsumer implements MqMessageHandler {
     private final SettleAccountService settleAccountService; // 结算
     private final ObjectMapper objectMapper; // JSON
 
-    /** 构造 */
+    /** 构造注入结算服务与 JSON 工具 */
     public PaymentResultConsumer(@Lazy SettleAccountService settleAccountService, ObjectMapper objectMapper) {
         this.settleAccountService = settleAccountService; // 结算
         this.objectMapper = objectMapper; // JSON
     }
 
+    /**
+     * 返回本 Handler 监听的 Topic。
+     */
     @Override // Topic
     public String topic() {
         return MqTopics.PAYMENT_RESULT; // payment result
     }
 
+    /**
+     * 反序列化支付回调 DTO 并交给结算服务处理。
+     */
     @Override // 处理回调
     public void handle(String payload) {
         try { // 反序列化
@@ -63,7 +69,7 @@ public class PaymentResultConsumer implements MqMessageHandler {
         private final MqListenerInvoker invoker; // Invoker
         private final MqConsumerProperties consumerProperties;
 
-        /** 构造 */
+        /** 构造注入 Handler、Invoker 与消费线程配置 */
         public RocketListener(PaymentResultConsumer delegate, MqListenerInvoker invoker,
                               MqConsumerProperties consumerProperties) {
             this.delegate = delegate; // Handler
@@ -71,11 +77,17 @@ public class PaymentResultConsumer implements MqMessageHandler {
             this.consumerProperties = consumerProperties;
         }
 
+        /**
+         * 启动前应用消费线程数配置。
+         */
         @Override
         public void prepareStart(DefaultMQPushConsumer consumer) {
             MqConsumerThreadSupport.apply(consumer, consumerProperties.getSettlementPaymentThreadMax(), "settlement-payment");
         }
 
+        /**
+         * RocketMQ 消息回调，经 Invoker 统一异常分类与指标埋点。
+         */
         @Override // 回调
         public void onMessage(String message) {
             invoker.invoke(MqTopics.PAYMENT_RESULT, () -> delegate.handle(message)); // wrap

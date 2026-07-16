@@ -11,6 +11,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * {@link AccountVoucherRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class AccountVoucherRepositoryImpl implements AccountVoucherRepository {
 
@@ -25,6 +28,7 @@ public class AccountVoucherRepositoryImpl implements AccountVoucherRepository {
         return MapperHelper.save(accountVoucherMapper, entity);
     }
 
+    /** 新记录批量 INSERT，已有主键走单条更新 */
     @Override
     public List<AccountVoucherEntity> saveAll(List<AccountVoucherEntity> entities) {
         if (entities == null || entities.isEmpty()) {

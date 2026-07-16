@@ -15,11 +15,17 @@ import org.springframework.context.annotation.EnableAspectJAutoProxy;
 @ConditionalOnProperty(name = "pay.db-rate-limit.enabled", havingValue = "true", matchIfMissing = true)
 public class DbRateLimitConfiguration {
 
+    /**
+     * 注册限流注册表 Bean。
+     */
     @Bean
     DbRateLimitRegistry dbRateLimitRegistry(DbRateLimitProperties properties) {
         return new DbRateLimitRegistry(properties);
     }
 
+    /**
+     * 注册限流切面 Bean。
+     */
     @Bean
     DbRateLimitAspect dbRateLimitAspect(DbRateLimitRegistry registry) {
         return new DbRateLimitAspect(registry);

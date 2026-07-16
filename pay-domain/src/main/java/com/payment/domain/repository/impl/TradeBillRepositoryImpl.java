@@ -13,6 +13,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * {@link TradeBillRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class TradeBillRepositoryImpl implements TradeBillRepository {
 
@@ -29,6 +32,7 @@ public class TradeBillRepositoryImpl implements TradeBillRepository {
         return MapperHelper.save(tradeBillMapper, entity);
     }
 
+    /** 通过 bill_route 补全 merchant_id 精准路由 */
     @Override
     public Optional<TradeBillEntity> findByBillNo(String billNo) {
         QueryWrapper<TradeBillEntity> wrapper = new QueryWrapper<>();
@@ -63,6 +67,7 @@ public class TradeBillRepositoryImpl implements TradeBillRepository {
         return tradeBillMapper.selectList(new QueryWrapper<TradeBillEntity>().eq("status", status));
     }
 
+    /** 按 merchant_id 取模过滤分片 */
     @Override
     public List<TradeBillEntity> findRecentByShardId(int shardId, int limit) {
         QueryWrapper<TradeBillEntity> wrapper = new QueryWrapper<>();

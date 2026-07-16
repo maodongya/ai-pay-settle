@@ -17,6 +17,9 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+/**
+ * 模拟支付渠道：异步提交打款并在成功后回调结算服务或发送 MQ。
+ */
 @Component
 public class MockPaymentChannel {
 
@@ -27,6 +30,9 @@ public class MockPaymentChannel {
     private final PayMqProperties payMqProperties;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 构造注入结算服务、MQ 生产者与配置。
+     */
     public MockPaymentChannel(@Lazy SettleAccountService settleAccountService,
                               PayMqProducer payMqProducer,
                               PayMqProperties payMqProperties,
@@ -37,6 +43,9 @@ public class MockPaymentChannel {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 异步模拟渠道打款，延迟后构造 SUCCESS 回调并投递。
+     */
     @Async
     public void submitAsync(String settleNo, BigDecimal amount) {
         try {

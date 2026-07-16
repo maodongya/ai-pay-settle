@@ -10,6 +10,10 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+/**
+ * 账户凭证表 Mapper，映射 account_voucher 表。
+ * 数据源：data 分片库。
+ */
 @Mapper
 @DS(DataSourceNames.DATA)
 public interface AccountVoucherMapper extends BaseMapper<AccountVoucherEntity> {

@@ -27,17 +27,23 @@ public class ClearanceTaskConsumer implements MqMessageHandler {
     private final ClearanceTaskService clearanceTaskService; // 清算服务
     private final ObjectMapper objectMapper; // JSON
 
-    /** 构造 */
+    /** 构造注入清算服务与 JSON 工具 */
     public ClearanceTaskConsumer(ClearanceTaskService clearanceTaskService, ObjectMapper objectMapper) {
         this.clearanceTaskService = clearanceTaskService; // 清算
         this.objectMapper = objectMapper; // JSON
     }
 
+    /**
+     * 返回本 Handler 监听的 Topic。
+     */
     @Override // Topic
     public String topic() {
         return MqTopics.CLEARANCE_TASK; // clearance topic
     }
 
+    /**
+     * 解析 billNo/merchantId 并执行清算（计费+分账）。
+     */
     @Override // 处理
     public void handle(String payload) {
         try { // 解析 billNo / merchantId
@@ -68,7 +74,7 @@ public class ClearanceTaskConsumer implements MqMessageHandler {
         private final MqListenerInvoker invoker; // Invoker
         private final MqConsumerProperties consumerProperties;
 
-        /** 构造 */
+        /** 构造注入 Handler、Invoker 与消费线程配置 */
         public RocketListener(ClearanceTaskConsumer delegate, MqListenerInvoker invoker,
                               MqConsumerProperties consumerProperties) {
             this.delegate = delegate; // Handler
@@ -76,11 +82,17 @@ public class ClearanceTaskConsumer implements MqMessageHandler {
             this.consumerProperties = consumerProperties;
         }
 
+        /**
+         * 启动前应用消费线程数配置。
+         */
         @Override
         public void prepareStart(DefaultMQPushConsumer consumer) {
             MqConsumerThreadSupport.apply(consumer, consumerProperties.getCalcThreadMax(), "calc");
         }
 
+        /**
+         * RocketMQ 消息回调，经 Invoker 统一异常分类与指标埋点。
+         */
         @Override // 回调
         public void onMessage(String message) {
             invoker.invoke(MqTopics.CLEARANCE_TASK, () -> delegate.handle(message)); // wrap

@@ -15,18 +15,21 @@ public final class ShardQueryHelper {
     private ShardQueryHelper() {
     }
 
+    /** 按账单号查询，有路由时补 merchant_id 条件 */
     public static <T> QueryWrapper<T> byBillNo(QueryWrapper<T> wrapper, String billNo, ShardRouteService shardRouteService) {
         Optional<Long> merchantId = shardRouteService.findMerchantIdByBillNo(billNo);
         merchantId.ifPresent(id -> wrapper.eq("merchant_id", id));
         return wrapper.eq("bill_no", billNo);
     }
 
+    /** 按结算单号查询，有路由时补 merchant_id 条件 */
     public static <T> QueryWrapper<T> bySettleNo(QueryWrapper<T> wrapper, String settleNo, ShardRouteService shardRouteService) {
         Optional<Long> merchantId = shardRouteService.findMerchantIdBySettleNo(settleNo);
         merchantId.ifPresent(id -> wrapper.eq("merchant_id", id));
         return wrapper.eq("settle_no", settleNo);
     }
 
+    /** 按账单号查询并回调 merchant_id（供更新场景使用） */
     public static <T> QueryWrapper<T> withBillRoute(QueryWrapper<T> wrapper, String billNo,
                                                       ShardRouteService shardRouteService,
                                                       Consumer<Long> merchantIdConsumer) {

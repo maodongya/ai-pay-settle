@@ -9,10 +9,15 @@ import org.apache.ibatis.annotations.Update;
 
 import java.math.BigDecimal;
 
+/**
+ * 商户应付挂账表 Mapper，映射 merchant_payable_suspend 表。
+ * 数据源：data 分片库。
+ */
 @Mapper
 @DS(DataSourceNames.DATA)
 public interface MerchantPayableSuspendMapper extends BaseMapper<MerchantPayableSuspendEntity> {
 
+    /** 结算抵扣挂账金额，足额时自动置为已结清 */
     @Update("UPDATE merchant_payable_suspend SET "
             + "settled_amount = settled_amount + #{deduct}, "
             + "status = CASE WHEN settled_amount + #{deduct} >= suspend_amount THEN 1 ELSE status END "

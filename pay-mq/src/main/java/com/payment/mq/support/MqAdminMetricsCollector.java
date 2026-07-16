@@ -48,6 +48,9 @@ public class MqAdminMetricsCollector {
     private final Map<String, AtomicLong> dlqHolders = new LinkedHashMap<>();
     private volatile DefaultMQAdminExt admin;
 
+    /**
+     * 构造注入 MQ 配置与可选 MeterRegistry，并注册 Gauge。
+     */
     public MqAdminMetricsCollector(PayMqProperties payMqProperties,
                                    ObjectProvider<MeterRegistry> meterRegistryProvider) {
         this.payMqProperties = payMqProperties;
@@ -85,6 +88,9 @@ public class MqAdminMetricsCollector {
         return java.util.Arrays.stream(GROUP_TOPICS).map(p -> p[0]).distinct().toArray(String[]::new);
     }
 
+    /**
+     * 定时刷新 Consumer Lag 与 DLQ 计数 Gauge。
+     */
     @Scheduled(fixedDelayString = "${pay.mq.infra-metrics-interval-ms:30000}")
     public void refresh() {
         if (meterRegistry == null || !payMqProperties.isEnabled()) {
@@ -105,7 +111,9 @@ public class MqAdminMetricsCollector {
         }
     }
 
-    /** 供 DlqInspectJob 复用 */
+    /**
+     * 获取指定 Consumer Group 当前 DLQ 消息数（供 DlqInspectJob 复用）。
+     */
     public long currentDlqCount(String consumerGroup) {
         AtomicLong holder = dlqHolders.get(consumerGroup);
         return holder == null ? 0L : holder.get();
@@ -151,6 +159,9 @@ public class MqAdminMetricsCollector {
         return admin;
     }
 
+    /**
+     * 关闭 Admin 客户端，释放连接资源。
+     */
     @PreDestroy
     public void shutdown() {
         if (admin != null) {

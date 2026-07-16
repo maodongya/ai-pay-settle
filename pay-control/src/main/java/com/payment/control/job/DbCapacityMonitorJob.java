@@ -34,6 +34,9 @@ public class DbCapacityMonitorJob {
     private final AlertService alertService;
     private final MeterRegistry meterRegistry;
 
+    /**
+     * 构造注入监控配置、仓储与告警服务。
+     */
     public DbCapacityMonitorJob(DbMonitorProperties dbProperties,
                                 OutboxMessageRepository outboxMessageRepository,
                                 ClearanceTaskRepository clearanceTaskRepository,
@@ -73,6 +76,9 @@ public class DbCapacityMonitorJob {
                 .register(meterRegistry);
     }
 
+    /**
+     * 定时巡检 Outbox/清算积压、未关闭告警与工单，超阈值发送告警。
+     */
     @Scheduled(fixedDelayString = "${pay.monitor.db.check-interval-ms:300000}")
     public void checkCapacity() {
         if (meterRegistry == null) {

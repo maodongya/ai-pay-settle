@@ -7,6 +7,9 @@ import com.payment.domain.repository.AlertRecordRepository;
 import com.payment.domain.support.MapperHelper;
 import org.springframework.stereotype.Repository;
 
+/**
+ * {@link AlertRecordRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class AlertRecordRepositoryImpl implements AlertRecordRepository {
 

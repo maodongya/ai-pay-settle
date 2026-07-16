@@ -17,6 +17,7 @@ public final class MapperHelper {
     private MapperHelper() {
     }
 
+    /** 按主键是否为空决定 insert 或 updateById */
     public static <T> T save(BaseMapper<T> mapper, T entity) {
         if (entity == null) {
             return null;

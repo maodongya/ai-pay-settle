@@ -10,10 +10,15 @@ import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
 
+/**
+ * 交易账单表 Mapper，映射 trade_bill 表。
+ * 数据源：data 分片库。
+ */
 @Mapper
 @DS(DataSourceNames.DATA)
 public interface TradeBillMapper extends BaseMapper<TradeBillEntity> {
 
+    /** 按账单号与商户 ID 乐观更新状态 */
     @Update("UPDATE trade_bill SET status = #{newStatus}, update_time = #{now} "
             + "WHERE bill_no = #{billNo} AND merchant_id = #{merchantId} AND status = #{expectedStatus}")
     int updateStatusByBillNoAndMerchantId(@Param("billNo") String billNo,

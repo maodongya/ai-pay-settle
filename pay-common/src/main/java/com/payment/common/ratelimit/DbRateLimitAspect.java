@@ -12,10 +12,16 @@ public class DbRateLimitAspect {
 
     private final DbRateLimitRegistry registry;
 
+    /**
+     * 构造注入限流注册表。
+     */
     public DbRateLimitAspect(DbRateLimitRegistry registry) {
         this.registry = registry;
     }
 
+    /**
+     * 环绕通知：进入 DB 热路径前阻塞获取层级令牌。
+     */
     @Around("@annotation(limit)")
     public Object around(ProceedingJoinPoint pjp, DbRateLimit limit) throws Throwable {
         registry.acquire(limit.layer(), limit.tps());

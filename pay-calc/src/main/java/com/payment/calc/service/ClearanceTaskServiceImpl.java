@@ -99,6 +99,9 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
         executeTask(billNo, null); // 委托带 merchantId 的重载
     }
 
+    /**
+     * 执行清算任务（带 merchantId 分片键，避免 bill_route 跨库不可见）。
+     */
     @Override // 实现接口方法（带 merchantId）
     @DbRateLimit(layer = DbRateLimitLayer.CALC)
     public void executeTask(String billNo, Long merchantId) {

@@ -9,5 +9,6 @@ import java.util.Optional;
  */
 public interface MerchantProfileRepository {
 
+    /** 按商户 ID 查询档案 */
     Optional<MerchantProfileEntity> findById(Long merchantId);
 }

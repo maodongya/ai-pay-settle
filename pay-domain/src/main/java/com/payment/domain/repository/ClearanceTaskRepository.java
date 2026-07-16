@@ -11,30 +11,41 @@ import java.util.Optional;
  */
 public interface ClearanceTaskRepository {
 
+    /** 保存或更新清算任务 */
     ClearanceTaskEntity save(ClearanceTaskEntity entity);
 
+    /** 按账单号查询（带分片路由） */
     Optional<ClearanceTaskEntity> findByBillNo(String billNo);
 
+    /** 按账单号与商户 ID 查询 */
     Optional<ClearanceTaskEntity> findByBillNoAndMerchantId(String billNo, Long merchantId);
 
+    /** 按账单号与商户 ID 查询任务状态 */
     Optional<Integer> findStatusByBillNoAndMerchantId(String billNo, Long merchantId);
 
+    /** 按状态查询任务，按创建时间升序 */
     List<ClearanceTaskEntity> findByStatusOrderByCreateTimeAsc(Integer status);
 
     /** 按分片查询指定状态任务（Job 扫描） */
     List<ClearanceTaskEntity> findByStatusAndShardIdOrderByCreateTimeAsc(Integer status, int shardId, int limit);
 
+    /** 抢占任务（状态 CAS 更新） */
     int claimTask(String billNo, Long merchantId, Integer expectedStatus, Integer newStatus, LocalDateTime now);
 
+    /** 标记任务成功 */
     int markSuccess(String billNo, Long merchantId, Integer expectedStatus, Integer newStatus, LocalDateTime now);
 
+    /** 标记任务失败并安排重试 */
     int markFailed(String billNo, Long merchantId, Integer expectedStatus, Integer failedStatus,
                    Integer deadStatus, int maxRetry, String errorMsg, LocalDateTime nextRetryTime, LocalDateTime now);
 
+    /** 强制置为死信状态 */
     int markDead(String billNo, Long merchantId, Integer newStatus, String errorMsg, LocalDateTime now);
 
+    /** 按状态与最大重试次数查询可重试任务 */
     List<ClearanceTaskEntity> findByStatusAndRetryCountLessThan(Integer status, Integer maxRetry);
 
+    /** 按状态与更新时间上限查询超时任务 */
     List<ClearanceTaskEntity> findByStatusAndUpdateTimeBefore(Integer status, LocalDateTime before);
 
     /** 按分片查询超时 RUNNING 任务（看门狗） */

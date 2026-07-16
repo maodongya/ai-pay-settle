@@ -8,10 +8,15 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 
+/**
+ * 提现申请表 Mapper，映射 withdraw_apply 表。
+ * 数据源：data 分片库。
+ */
 @Mapper
 @DS(DataSourceNames.DATA)
 public interface WithdrawApplyMapper extends BaseMapper<WithdrawApplyEntity> {
 
+    /** 按结算单号与商户 ID 更新申请状态 */
     @Update("UPDATE withdraw_apply SET status = #{status} "
             + "WHERE settle_no = #{settleNo} AND merchant_id = #{merchantId}")
     int updateStatusBySettleNoAndMerchantId(@Param("settleNo") String settleNo,

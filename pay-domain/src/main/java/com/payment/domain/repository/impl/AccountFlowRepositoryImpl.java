@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * {@link AccountFlowRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class AccountFlowRepositoryImpl implements AccountFlowRepository {
 

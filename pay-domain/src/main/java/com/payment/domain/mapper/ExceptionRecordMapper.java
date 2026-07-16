@@ -7,7 +7,8 @@ import com.payment.domain.entity.ExceptionRecordEntity; // 实体
 import org.apache.ibatis.annotations.Mapper; // MyBatis 注解
 
 /**
- * 异常工单表 Mapper。
+ * 异常工单表 Mapper，映射 exception_record 表。
+ * 数据源：config 配置库。
  */
 @Mapper // 扫描注册
 @DS(DataSourceNames.CONFIG)

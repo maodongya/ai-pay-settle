@@ -11,10 +11,16 @@ public class DbRateLimitRegistry {
     private final DbRateLimitProperties properties;
     private final Map<DbRateLimitLayer, LayerTpsRateLimiter> limiters = new EnumMap<>(DbRateLimitLayer.class);
 
+    /**
+     * 构造注入限流配置。
+     */
     public DbRateLimitRegistry(DbRateLimitProperties properties) {
         this.properties = properties;
     }
 
+    /**
+     * 获取指定层级的 TPS 令牌（阻塞等待），未启用时直接返回。
+     */
     public void acquire(DbRateLimitLayer layer, double annotationTps) {
         if (!properties.isEnabled()) {
             return;
