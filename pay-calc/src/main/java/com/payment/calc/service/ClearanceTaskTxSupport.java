@@ -83,28 +83,33 @@ public class ClearanceTaskTxSupport {
     }
 
     /**
-     * 阶段 2：计费 + 分账 + outbox（主事务，不含前后状态查询）。
+     * 阶段 2a：计费（短事务，释放连接后再分账）。
      */
-    @DSTransactional // 多数据源主事务
-    public void runFeeAndSplit(TradeBillEntity bill, AgentRelationDTO relation) {
+    @DSTransactional // 多数据源短事务
+    public FeeCalcResultDTO runFeeCalc(TradeBillEntity bill, AgentRelationDTO relation) {
         String billNo = bill.billNo; // 账单号
-        FeeCalcResultDTO result; // 计费结果
         if (bill.billType == BillType.REFUND.getCode()) { // 退款单
-            result = feeCalcService.calcRefundFee(bill.originBillNo, billNo, bill.tradeAmount); // 退费用
-        } else { // 正向交易
-            FeeCalcDTO req = new FeeCalcDTO(); // 构建计费请求
-            req.billNo = billNo; // 账单号
-            req.merchantId = bill.merchantId; // 商户 ID
-            req.agentId = relation.agentId != null ? relation.agentId : bill.agentId; // 一级代理
-            req.secondAgentId = relation.secondAgentId != null ? relation.secondAgentId : bill.secondAgentId; // 二级代理
-            req.splitPartyId = relation.splitPartyId; // 合作方
-            req.tradeAmount = bill.tradeAmount; // 交易金额
-            req.businessLine = bill.businessLine; // 业务线
-            req.category = bill.category; // 品类
-            req.serviceItem = bill.serviceItem; // 服务项目
-            req.cityCode = bill.cityCode; // 城市
-            result = feeCalcService.calcShareFee(req); // 正向分润
+            return feeCalcService.calcRefundFee(bill.originBillNo, billNo, bill.tradeAmount); // 退费用
         }
+        FeeCalcDTO req = new FeeCalcDTO(); // 构建计费请求
+        req.billNo = billNo; // 账单号
+        req.merchantId = bill.merchantId; // 商户 ID
+        req.agentId = relation.agentId != null ? relation.agentId : bill.agentId; // 一级代理
+        req.secondAgentId = relation.secondAgentId != null ? relation.secondAgentId : bill.secondAgentId; // 二级代理
+        req.splitPartyId = relation.splitPartyId; // 合作方
+        req.tradeAmount = bill.tradeAmount; // 交易金额
+        req.businessLine = bill.businessLine; // 业务线
+        req.category = bill.category; // 品类
+        req.serviceItem = bill.serviceItem; // 服务项目
+        req.cityCode = bill.cityCode; // 城市
+        return feeCalcService.calcShareFee(req); // 正向分润
+    }
+
+    /**
+     * 阶段 2b：分账 + outbox（独立短事务）。
+     */
+    @DSTransactional // 多数据源短事务
+    public void runSplitDetail(FeeCalcResultDTO result, AgentRelationDTO relation) {
         splitService.generateSplitDetail(result, relation); // 分账明细+凭证+outbox
     }
 

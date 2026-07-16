@@ -84,12 +84,18 @@ pay:
       circuit-enabled: false
       check-interval-ms: 120000
     consumer:
-      access-thread-max: 8
-      calc-thread-max: 12
-      settlement-thread-max: 8
-      settlement-payment-thread-max: 4
+      # 与 30 TPS 限流对齐，降低并发持连
+      access-thread-max: 6
+      calc-thread-max: 8
+      settlement-thread-max: 4
+      settlement-payment-thread-max: 2
   calc:
     metrics-interval-ms: 30000
+  db-rate-limit:
+    enabled: true
+    access-tps: 30
+    calc-tps: 30
+    settlement-tps: 30
   outbox:
     dispatch-interval-ms: 3000
     dispatch-batch-size: 50

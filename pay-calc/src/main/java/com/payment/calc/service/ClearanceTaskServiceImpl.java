@@ -1,6 +1,7 @@
 package com.payment.calc.service; // 清算计算服务包
 
 import com.payment.api.dto.AgentRelationDTO; // 代理关系 DTO
+import com.payment.api.dto.FeeCalcResultDTO; // 费用计算结果 DTO
 import com.payment.api.service.ClearanceTaskService; // 清算任务服务接口
 import com.payment.api.service.MerchantValidateService; // 商户校验服务接口
 import com.payment.calc.metrics.ClearanceTaskMetrics; // calc 清算监控指标
@@ -9,6 +10,8 @@ import com.payment.common.enums.BillStatus; // 账单状态枚举
 import com.payment.common.enums.TaskStatus; // 任务状态枚举
 import com.payment.common.shard.ShardRouter;
 import com.payment.common.metrics.PayBusinessMetrics; // 业务吞吐指标
+import com.payment.common.ratelimit.DbRateLimit;
+import com.payment.common.ratelimit.DbRateLimitLayer;
 import com.payment.domain.entity.ClearanceTaskEntity; // 清算任务实体
 import com.payment.domain.entity.TradeBillEntity; // 交易账单实体
 import com.payment.domain.repository.ClearanceTaskRepository; // 清算任务仓储
@@ -72,8 +75,9 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
      */
     @Override // 实现接口方法
     @DSTransactional // 多数据源
+    @DbRateLimit(layer = DbRateLimitLayer.CALC)
     public void createTask(String billNo, Long merchantId) {
-        if (clearanceTaskRepository.findByBillNo(billNo).isPresent()) { // 任务已存在
+        if (clearanceTaskRepository.findByBillNoAndMerchantId(billNo, merchantId).isPresent()) { // 任务已存在
             return; // 直接返回（幂等）
         }
         ClearanceTaskEntity task = new ClearanceTaskEntity(); // 创建任务实体
@@ -96,6 +100,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     }
 
     @Override // 实现接口方法（带 merchantId）
+    @DbRateLimit(layer = DbRateLimitLayer.CALC)
     public void executeTask(String billNo, Long merchantId) {
         long consumeStart = clearanceTaskMetrics.nanoTime(); // 整单消费起点
         boolean success = false; // 是否清算成功
@@ -124,7 +129,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
 
             try { // 阶段 2+3
                 long coreStart = clearanceTaskMetrics.nanoTime(); // 阶段 2 起点
-                clearanceTaskTxSupport.runFeeAndSplit(bill, relation); // 计费+分账
+                FeeCalcResultDTO feeResult = clearanceTaskTxSupport.runFeeCalc(bill, relation); // 计费（短事务）
+                clearanceTaskTxSupport.runSplitDetail(feeResult, relation); // 分账（独立短事务）
                 clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FEE_SPLIT, coreStart); // 记录 fee_split 耗时
 
                 long finStart = clearanceTaskMetrics.nanoTime(); // 阶段 3 起点

@@ -7,6 +7,8 @@ import com.payment.common.enums.SettleMode; // 结算模式枚举
 import com.payment.common.enums.SettleOrderStatus; // 结算订单状态枚举
 import com.payment.common.exception.BizException; // 业务异常
 import com.payment.common.exception.ErrorCode; // 错误码
+import com.payment.common.ratelimit.DbRateLimit;
+import com.payment.common.ratelimit.DbRateLimitLayer;
 import com.payment.common.util.BizSeqGenerator; // 序列号生成器
 import com.payment.domain.entity.*; // 结算领域实体
 import com.payment.domain.repository.*; // 结算领域仓储
@@ -73,6 +75,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
      */
     @Override // 实现接口方法
     @Transactional // 开启事务
+    @DbRateLimit(layer = DbRateLimitLayer.SETTLEMENT)
     public void creditBalance(Long merchantId, String billNo, BigDecimal amount) {
         BigDecimal remain = amount; // 剩余待入账金额
         List<MerchantPayableSuspendEntity> suspends = suspendRepository // 查询未结清挂账
@@ -103,6 +106,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
      */
     @Override // 实现接口方法
     @Transactional // 开启事务
+    @DbRateLimit(layer = DbRateLimitLayer.SETTLEMENT)
     public void debitRefundBalance(Long merchantId, String billNo, BigDecimal amount) {
         try { // 尝试扣款
             accountOperator.debit(merchantId, billNo, amount); // 扣减待结算余额
@@ -216,6 +220,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
      */
     @Override // 实现接口方法
     @Transactional // 开启事务
+    @DbRateLimit(layer = DbRateLimitLayer.SETTLEMENT)
     public void handlePaymentCallback(PaymentCallbackDTO callback) {
         SettlementOrderEntity order = settlementOrderRepository.findBySettleNo(callback.settleNo) // 查询结算订单
                 .orElseThrow(() -> BizException.of(ErrorCode.INVALID_PARAM, "settle not found")); // 订单不存在

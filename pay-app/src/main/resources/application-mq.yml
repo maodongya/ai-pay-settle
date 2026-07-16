@@ -8,11 +8,11 @@ pay:
     outbox-via-mq: ${PAY_MQ_OUTBOX:true}
     payment-callback-via-mq: true
     consumer:
-      # 与 sharding profile 对齐，避免 mq profile 覆盖后 32 线程打满连接池
-      access-thread-max: 8
-      calc-thread-max: 12
-      settlement-thread-max: 8
-      settlement-payment-thread-max: 4
+      # 与 30 TPS 限流对齐
+      access-thread-max: 6
+      calc-thread-max: 8
+      settlement-thread-max: 4
+      settlement-payment-thread-max: 2
       consume-timeout-minutes: 15
       pull-batch-size: 32
       roles: all
@@ -31,6 +31,11 @@ pay:
     dispatch-batch-size: 200
   compensate:
     outbox-interval-ms: 600000
+  db-rate-limit:
+    enabled: true
+    access-tps: 30
+    calc-tps: 30
+    settlement-tps: 30
 
 spring:
   datasource:

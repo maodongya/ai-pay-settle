@@ -11,6 +11,8 @@ import com.payment.common.enums.BillStatus; // 账单状态
 import com.payment.common.enums.BillType; // 账单类型
 import com.payment.common.exception.BizException; // 业务异常
 import com.payment.common.metrics.PayBusinessMetrics;
+import com.payment.common.ratelimit.DbRateLimit;
+import com.payment.common.ratelimit.DbRateLimitLayer;
 import com.payment.domain.entity.TradeBillEntity; // 账单实体
 import com.payment.domain.repository.TradeBillRepository; // 账单仓储
 import com.payment.domain.service.ShardRouteService;
@@ -73,8 +75,13 @@ public class BillAccessServiceImpl implements BillAccessService {
                     .map(this::toDto)
                     .orElse(bill);
         }
+        ValidateResult validation = merchantValidateService.validateBill(bill);
+        if (!validation.valid) {
+            throw new BizException(validation.errorCode, validation.message);
+        }
         int status = self.persistNewBill(bill);
         if (status == BillStatus.PENDING.getCode()) {
+            clearanceTaskService.createTask(bill.billNo, bill.merchantId);
             triggerClearance(bill.billNo, bill.merchantId);
         }
         businessMetrics.markBillAccepted(bill.billNo, bill.billType);
@@ -82,16 +89,11 @@ public class BillAccessServiceImpl implements BillAccessService {
     }
 
     /**
-     * 仅落库：trade_bill + bill_route + clearance_task。
-     * @return 账单状态码
+     * 仅落库：trade_bill + bill_route（短事务；校验与 clearance_task 在事务外）。
      */
     @DSTransactional
+    @DbRateLimit(layer = DbRateLimitLayer.ACCESS)
     public int persistNewBill(TradeBillDTO bill) {
-        ValidateResult validation = merchantValidateService.validateBill(bill);
-        if (!validation.valid) {
-            throw new BizException(validation.errorCode, validation.message);
-        }
-
         int status = BillStatus.PENDING.getCode();
         if (bill.billType == BillType.REFUND.getCode()) {
             TradeBillEntity origin = tradeBillRepository.findByBillNo(bill.originBillNo).orElseThrow();
@@ -119,10 +121,6 @@ public class BillAccessServiceImpl implements BillAccessService {
         entity.updateTime = LocalDateTime.now();
         tradeBillRepository.save(entity);
         shardRouteService.registerBillRoute(bill.billNo, bill.merchantId, bill.billType);
-
-        if (status == BillStatus.PENDING.getCode()) {
-            clearanceTaskService.createTask(bill.billNo, bill.merchantId);
-        }
         return status;
     }
 
