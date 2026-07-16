@@ -85,9 +85,11 @@ pay:
       check-interval-ms: 120000
     consumer:
       access-thread-max: 8
-      calc-thread-max: 8
+      calc-thread-max: 12
       settlement-thread-max: 8
       settlement-payment-thread-max: 4
+  calc:
+    metrics-interval-ms: 30000
   outbox:
     dispatch-interval-ms: 3000
     dispatch-batch-size: 50

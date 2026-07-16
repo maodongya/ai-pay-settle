@@ -10,7 +10,7 @@ pay:
     consumer:
       # 与 sharding profile 对齐，避免 mq profile 覆盖后 32 线程打满连接池
       access-thread-max: 8
-      calc-thread-max: 8
+      calc-thread-max: 12
       settlement-thread-max: 8
       settlement-payment-thread-max: 4
       consume-timeout-minutes: 15

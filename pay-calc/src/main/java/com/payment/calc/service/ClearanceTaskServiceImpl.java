@@ -1,20 +1,14 @@
 package com.payment.calc.service; // 清算计算服务包
 
 import com.payment.api.dto.AgentRelationDTO; // 代理关系 DTO
-import com.payment.api.dto.FeeCalcDTO; // 费用计算请求 DTO
-import com.payment.api.dto.FeeCalcResultDTO; // 费用计算结果 DTO
 import com.payment.api.service.ClearanceTaskService; // 清算任务服务接口
-import com.payment.api.service.FeeCalcService; // 费用计算服务接口
 import com.payment.api.service.MerchantValidateService; // 商户校验服务接口
-import com.payment.api.service.SplitService; // 分账服务接口
+import com.payment.calc.metrics.ClearanceTaskMetrics; // calc 清算监控指标
 import com.payment.calc.support.ClearanceTaskPublisher; // 清算 MQ 发布器
 import com.payment.common.enums.BillStatus; // 账单状态枚举
-import com.payment.common.enums.BillType; // 账单类型枚举
 import com.payment.common.enums.TaskStatus; // 任务状态枚举
 import com.payment.common.shard.ShardRouter;
 import com.payment.common.metrics.PayBusinessMetrics; // 业务吞吐指标
-import com.payment.control.service.AlertService; // 告警服务
-import com.payment.control.service.ExceptionRecordService; // 异常工单服务
 import com.payment.domain.entity.ClearanceTaskEntity; // 清算任务实体
 import com.payment.domain.entity.TradeBillEntity; // 交易账单实体
 import com.payment.domain.repository.ClearanceTaskRepository; // 清算任务仓储
@@ -26,13 +20,10 @@ import org.slf4j.Logger; // 日志接口
 import org.slf4j.LoggerFactory; // 日志工厂
 import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.payment.domain.support.ShardScanSupport;
-import java.time.Duration;
 import java.time.LocalDateTime; // 本地日期时间
 import java.util.List; // 列表
 import java.util.Optional; // Optional
 import org.springframework.stereotype.Service; // Spring 服务注解
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 清算任务服务实现，负责创建、执行和重试清算任务。
@@ -42,20 +33,16 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
 
     private static final Logger log = LoggerFactory.getLogger(ClearanceTaskServiceImpl.class); // 日志记录器
     private static final int MAX_RETRY = 5; // 最大业务重试次数（L2）
-    /** error_msg 列 VARCHAR(512)，预留余量避免 Data too long */
-    private static final int ERROR_MSG_MAX = 500;
 
     private final ClearanceTaskRepository clearanceTaskRepository; // 清算任务仓储
     private final TradeBillRepository tradeBillRepository; // 交易账单仓储
     private final ShardRouteService shardRouteService; // bill_no → merchant_id
-    private final FeeCalcService feeCalcService; // 费用计算服务
-    private final SplitService splitService; // 分账服务
     private final MerchantValidateService merchantValidateService; // 商户校验服务
     private final PayMqProperties payMqProperties; // MQ 模式开关
     private final ClearanceTaskPublisher clearanceTaskPublisher; // 清算 MQ 发布
-    private final ExceptionRecordService exceptionRecordService; // 异常工单
-    private final AlertService alertService; // 告警
     private final PayBusinessMetrics businessMetrics; // 业务吞吐指标
+    private final ClearanceTaskTxSupport clearanceTaskTxSupport; // 分阶段事务
+    private final ClearanceTaskMetrics clearanceTaskMetrics; // calc 监控
 
     /**
      * 构造注入依赖。
@@ -63,25 +50,21 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     public ClearanceTaskServiceImpl(ClearanceTaskRepository clearanceTaskRepository,
                                     TradeBillRepository tradeBillRepository,
                                     ShardRouteService shardRouteService,
-                                    FeeCalcService feeCalcService,
-                                    SplitService splitService,
                                     MerchantValidateService merchantValidateService,
                                     PayMqProperties payMqProperties,
                                     ClearanceTaskPublisher clearanceTaskPublisher,
-                                    ExceptionRecordService exceptionRecordService,
-                                    AlertService alertService,
-                                    PayBusinessMetrics businessMetrics) {
+                                    PayBusinessMetrics businessMetrics,
+                                    ClearanceTaskTxSupport clearanceTaskTxSupport,
+                                    ClearanceTaskMetrics clearanceTaskMetrics) {
         this.clearanceTaskRepository = clearanceTaskRepository; // 赋值任务仓储
         this.tradeBillRepository = tradeBillRepository; // 赋值账单仓储
         this.shardRouteService = shardRouteService; // 赋值路由服务
-        this.feeCalcService = feeCalcService; // 赋值费用服务
-        this.splitService = splitService; // 赋值分账服务
         this.merchantValidateService = merchantValidateService; // 赋值校验服务
         this.payMqProperties = payMqProperties; // 赋值 MQ 配置
         this.clearanceTaskPublisher = clearanceTaskPublisher; // 赋值发布器
-        this.exceptionRecordService = exceptionRecordService; // 赋值工单服务
-        this.alertService = alertService; // 赋值告警服务
         this.businessMetrics = businessMetrics; // 赋值指标
+        this.clearanceTaskTxSupport = clearanceTaskTxSupport; // 赋值分阶段事务
+        this.clearanceTaskMetrics = clearanceTaskMetrics; // 赋值 calc 指标
     }
 
     /**
@@ -108,103 +91,53 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
      * 执行清算任务：计费→分账→更新状态；协调 MQ L1 与业务 L2 重试。
      */
     @Override // 实现接口方法
-    @DSTransactional
     public void executeTask(String billNo) {
-        executeTask(billNo, null);
+        executeTask(billNo, null); // 委托带 merchantId 的重载
     }
 
-    @Override
-    @DSTransactional
+    @Override // 实现接口方法（带 merchantId）
     public void executeTask(String billNo, Long merchantId) {
-        Long resolvedMerchantId = resolveMerchantId(billNo, merchantId);
-        int claimed = clearanceTaskRepository.claimTask( // 抢占 PENDING → RUNNING
-                billNo, resolvedMerchantId, TaskStatus.PENDING.getCode(), TaskStatus.RUNNING.getCode(), LocalDateTime.now());
-        if (claimed == 0) { // 抢占失败
-            handleUnclaimed(billNo); // 幂等/DEAD 短路
-            return; // 结束
-        }
+        long consumeStart = clearanceTaskMetrics.nanoTime(); // 整单消费起点
+        boolean success = false; // 是否清算成功
+        try { // 主流程
+            Long resolvedMerchantId = resolveMerchantId(billNo, merchantId); // 解析分片键
 
-        Optional<TradeBillEntity> billOpt = tradeBillRepository.findByBillNo(billNo);
-        if (billOpt.isEmpty()) {
-            // 同事务内标 DEAD 后直接返回（ACK），避免抛异常导致事务回滚、任务卡在 PENDING
-            markTaskDead(billNo, "trade bill not found");
-            log.error("clearance skip missing bill billNo={}", billNo);
-            return;
-        }
-        TradeBillEntity bill = billOpt.get();
-        bill.status = BillStatus.CLEARING.getCode(); // 更新为清算中
-        tradeBillRepository.save(bill); // 保存账单
+            long claimStart = clearanceTaskMetrics.nanoTime(); // 阶段 1 起点
+            Optional<TradeBillEntity> billOpt = clearanceTaskTxSupport.claimAndMarkClearing(billNo, resolvedMerchantId); // 抢占+标 CLEARING
+            clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_CLAIM, claimStart); // 记录 claim 耗时
+            if (billOpt.isEmpty()) { // 未抢到或已处理
+                handleUnclaimed(billNo); // 幂等/DEAD 短路
+                clearanceTaskMetrics.recordSkip(); // 跳过计数
+                return; // ACK 结束
+            }
+            TradeBillEntity bill = billOpt.get(); // 取出账单
 
-        try { // 执行清算逻辑
+            // 主数据走 Redis 缓存，放在短事务之外，减少持连期间的 config 往返
             AgentRelationDTO relation = merchantValidateService.loadRelation(bill.merchantId); // 加载代理关系
-            FeeCalcResultDTO result; // 费用计算结果
-            if (bill.billType == BillType.REFUND.getCode()) { // 退款单
-                result = feeCalcService.calcRefundFee(bill.originBillNo, billNo, bill.tradeAmount); // 计算退款费用
-            } else { // 正向交易
-                FeeCalcDTO req = new FeeCalcDTO(); // 构建费用计算请求
-                req.billNo = billNo; // 账单号
-                req.merchantId = bill.merchantId; // 商户 ID
-                req.agentId = relation.agentId != null ? relation.agentId : bill.agentId; // 一级代理 ID
-                req.secondAgentId = relation.secondAgentId != null ? relation.secondAgentId : bill.secondAgentId; // 二级代理
-                req.splitPartyId = relation.splitPartyId; // 合作方 ID
-                req.tradeAmount = bill.tradeAmount; // 交易金额
-                req.businessLine = bill.businessLine; // 业务线
-                req.category = bill.category; // 品类
-                req.serviceItem = bill.serviceItem; // 服务项目
-                req.cityCode = bill.cityCode; // 城市编码
-                result = feeCalcService.calcShareFee(req); // 计算正向分润
+
+            try { // 阶段 2+3
+                long coreStart = clearanceTaskMetrics.nanoTime(); // 阶段 2 起点
+                clearanceTaskTxSupport.runFeeAndSplit(bill, relation); // 计费+分账
+                clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FEE_SPLIT, coreStart); // 记录 fee_split 耗时
+
+                long finStart = clearanceTaskMetrics.nanoTime(); // 阶段 3 起点
+                clearanceTaskTxSupport.finalizeSuccess(bill); // 标 CLEARED+SUCCESS
+                clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FINALIZE, finStart); // 记录 finalize 耗时
+
+                businessMetrics.recordThroughput(PayBusinessMetrics.STAGE_CLEARANCE_DONE, true); // 业务吞吐指标
+                activateWaitingRefunds(billNo); // 激活等待原单的退款
+                success = true; // 标记成功
+            } catch (NonRetryableException e) { // 不可重试
+                throw e; // 原样抛出给 MQ Invoker
+            } catch (Exception e) { // 可重试业务失败
+                log.error("clearance failed billNo={}", billNo, e); // 错误日志
+                long failStart = clearanceTaskMetrics.nanoTime(); // 失败处理起点
+                clearanceTaskTxSupport.markFailure(bill, e); // 标 FAILED/DEAD
+                clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FAIL, failStart); // 记录 fail 耗时
             }
-
-            splitService.generateSplitDetail(result, relation); // 生成分账明细与 Outbox
-
-            bill.status = BillStatus.CLEARED.getCode(); // 更新为已清算
-            tradeBillRepository.save(bill); // 保存账单
-
-            ClearanceTaskEntity task = clearanceTaskRepository.findByBillNo(billNo).orElseThrow(); // 查询任务
-            task.status = TaskStatus.SUCCESS.getCode(); // 更新为成功
-            task.errorMsg = null; // 清空错误信息
-            task.nextRetryTime = null; // 清空下次重试
-            clearanceTaskRepository.save(task); // 保存任务
-            businessMetrics.recordThroughput(PayBusinessMetrics.STAGE_CLEARANCE_DONE, true);
-
-            scheduleActivateWaitingRefunds(billNo); // 事务提交后再激活退款，缩短持锁时间
-        } catch (NonRetryableException e) {
-            throw e;
-        } catch (Exception e) { // 清算失败
-            log.error("clearance failed billNo={}", billNo, e); // 记录错误日志
-            ClearanceTaskEntity task = clearanceTaskRepository.findByBillNo(billNo).orElseThrow(); // 查询任务
-            task.status = TaskStatus.FAILED.getCode(); // 更新为失败
-            task.retryCount = task.retryCount + 1; // 重试次数加一
-            task.errorMsg = truncateError(e.getMessage()); // 记录错误信息（截断）
-            task.nextRetryTime = LocalDateTime.now().plus(backoffDuration(task.retryCount)); // 指数退避
-            if (task.retryCount >= MAX_RETRY) { // 超过最大重试
-                task.status = TaskStatus.DEAD.getCode(); // 标记为死信
-                exceptionRecordService.openClearanceDead(billNo, task.errorMsg); // 建 EX-0201 工单
-                alertService.send(AlertService.CLEARANCE_DEAD, // P2 告警
-                        "billNo=" + billNo + " err=" + task.errorMsg); // 告警内容
-            }
-            clearanceTaskRepository.save(task); // 保存任务
-
-            bill.status = BillStatus.FAILED.getCode(); // 账单标记失败
-            tradeBillRepository.save(bill); // 保存账单
+        } finally { // 无论成败记录整单耗时
+            clearanceTaskMetrics.recordConsume(consumeStart, success); // 写入 consume_duration
         }
-    }
-
-    private void markTaskDead(String billNo, String reason) {
-        clearanceTaskRepository.findByBillNo(billNo).ifPresent(task -> {
-            task.status = TaskStatus.DEAD.getCode();
-            task.errorMsg = truncateError(reason);
-            task.nextRetryTime = null;
-            clearanceTaskRepository.save(task);
-            exceptionRecordService.openClearanceDead(billNo, task.errorMsg);
-        });
-    }
-
-    private static String truncateError(String msg) {
-        if (msg == null) {
-            return null;
-        }
-        return msg.length() <= ERROR_MSG_MAX ? msg : msg.substring(0, ERROR_MSG_MAX);
     }
 
     /**
@@ -264,22 +197,6 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     }
 
     /**
-     * 清算主事务提交后再激活退款，避免在同一 @DSTransactional 内嵌套写库与发 MQ。
-     */
-    private void scheduleActivateWaitingRefunds(String clearedBillNo) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    activateWaitingRefunds(clearedBillNo);
-                }
-            });
-        } else {
-            activateWaitingRefunds(clearedBillNo);
-        }
-    }
-
-    /**
      * 原单清算成功后，激活等待原单的退款单（改发 MQ，不阻塞消费线程）。
      */
     private void activateWaitingRefunds(String clearedBillNo) {
@@ -295,16 +212,5 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
                 executeTask(refund.billNo, refund.merchantId); // 本地执行
             }
         }
-    }
-
-    /** 业务重试退避：1/5/15/30/60 分钟 */
-    private Duration backoffDuration(int retryCount) {
-        return switch (retryCount) { // 按 retry_count 阶梯
-            case 1 -> Duration.ofMinutes(1); // 第 1 次失败 +1min
-            case 2 -> Duration.ofMinutes(5); // 第 2 次 +5min
-            case 3 -> Duration.ofMinutes(15); // 第 3 次 +15min
-            case 4 -> Duration.ofMinutes(30); // 第 4 次 +30min
-            default -> Duration.ofMinutes(60); // 第 5 次 +60min
-        };
     }
 }
