@@ -9,6 +9,8 @@ import com.payment.domain.support.MapperHelper;
 import com.payment.domain.support.ShardQueryHelper;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Repository
@@ -30,7 +32,28 @@ public class SplitDetailRepositoryImpl implements SplitDetailRepository {
 
     @Override
     public List<SplitDetailEntity> saveAll(List<SplitDetailEntity> entities) {
-        return MapperHelper.saveAll(splitDetailMapper, entities);
+        if (entities == null || entities.isEmpty()) {
+            return entities;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<SplitDetailEntity> toInsert = new ArrayList<>(entities.size());
+        for (SplitDetailEntity entity : entities) {
+            if (entity == null) {
+                continue;
+            }
+            if (entity.id != null) {
+                MapperHelper.save(splitDetailMapper, entity);
+                continue;
+            }
+            if (entity.createTime == null) {
+                entity.createTime = now;
+            }
+            toInsert.add(entity);
+        }
+        if (!toInsert.isEmpty()) {
+            splitDetailMapper.insertBatch(toInsert);
+        }
+        return entities;
     }
 
     @Override

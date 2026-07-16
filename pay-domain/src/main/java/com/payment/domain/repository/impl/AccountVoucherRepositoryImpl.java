@@ -7,6 +7,8 @@ import com.payment.domain.repository.AccountVoucherRepository;
 import com.payment.domain.support.MapperHelper;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Repository
@@ -25,7 +27,31 @@ public class AccountVoucherRepositoryImpl implements AccountVoucherRepository {
 
     @Override
     public List<AccountVoucherEntity> saveAll(List<AccountVoucherEntity> entities) {
-        return MapperHelper.saveAll(accountVoucherMapper, entities);
+        if (entities == null || entities.isEmpty()) {
+            return entities;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<AccountVoucherEntity> toInsert = new ArrayList<>(entities.size());
+        for (AccountVoucherEntity entity : entities) {
+            if (entity == null) {
+                continue;
+            }
+            if (entity.voucherId != null) {
+                MapperHelper.save(accountVoucherMapper, entity);
+                continue;
+            }
+            if (entity.createTime == null) {
+                entity.createTime = now;
+            }
+            if (entity.syncStatus == null) {
+                entity.syncStatus = 0;
+            }
+            toInsert.add(entity);
+        }
+        if (!toInsert.isEmpty()) {
+            accountVoucherMapper.insertBatch(toInsert);
+        }
+        return entities;
     }
 
     @Override

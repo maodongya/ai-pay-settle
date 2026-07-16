@@ -1,5 +1,5 @@
 # ShardingSphere 5.5 — 4 库 × 4 表 = 16 分片，分片键 merchant_id
-# 内层 Hikari 池：每库 maximumPoolSize=12，单实例物理连接预算 48（见 数据库连接池优化.md）
+# 内层 Hikari：每库 maximumPoolSize=14，单实例物理预算 56 + config16 ≈ 72（见 docs/mq/整体优化方案批量写入.md）
 databaseName: pay_data_sharding
 
 dataSources:
@@ -10,7 +10,7 @@ dataSources:
     username: root
     password: 123456
     poolName: shard-ds-00
-    maximumPoolSize: 12
+    maximumPoolSize: 14
     minimumIdle: 2
     connectionTimeout: 30000
     idleTimeout: 600000
@@ -23,7 +23,7 @@ dataSources:
     username: root
     password: 123456
     poolName: shard-ds-01
-    maximumPoolSize: 12
+    maximumPoolSize: 14
     minimumIdle: 2
     connectionTimeout: 30000
     idleTimeout: 600000
@@ -36,7 +36,7 @@ dataSources:
     username: root
     password: 123456
     poolName: shard-ds-02
-    maximumPoolSize: 12
+    maximumPoolSize: 14
     minimumIdle: 2
     connectionTimeout: 30000
     idleTimeout: 600000
@@ -49,7 +49,7 @@ dataSources:
     username: root
     password: 123456
     poolName: shard-ds-03
-    maximumPoolSize: 12
+    maximumPoolSize: 14
     minimumIdle: 2
     connectionTimeout: 30000
     idleTimeout: 600000
