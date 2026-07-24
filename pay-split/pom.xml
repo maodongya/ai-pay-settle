@@ -16,6 +16,10 @@
         </dependency>
         <dependency>
             <groupId>com.payment</groupId>
+            <artifactId>pay-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.payment</groupId>
             <artifactId>pay-domain</artifactId>
         </dependency>
         <dependency>

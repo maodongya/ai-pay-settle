@@ -24,5 +24,8 @@ public interface MerchantSettleAccountRepository {
     List<MerchantSettleAccountEntity> findBySettleModeAndWaitBalanceGreaterThanEqualOrderByMerchantIdAsc(
             Integer settleMode, BigDecimal minBalance);
 
+    /** ACCOUNT_ONLY 模式下按结算模式扫描候选商户（余额以账务为准）。 */
+    List<MerchantSettleAccountEntity> findBySettleModeOrderByMerchantIdAsc(Integer settleMode);
+
     List<MerchantSettleAccountEntity> findAll();
 }

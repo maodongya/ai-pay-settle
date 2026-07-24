@@ -2,6 +2,7 @@ package com.payment.settlement.service; // 结算服务包
 
 import com.payment.api.dto.*; // 结算相关 DTO
 import com.payment.api.service.SettleAccountService; // 结算账户服务接口
+import com.payment.common.config.PayAccountProperties;
 import com.payment.common.enums.AccountFlowOpType; // 账户流水操作类型枚举
 import com.payment.common.enums.SettleMode; // 结算模式枚举
 import com.payment.common.enums.SettleOrderStatus; // 结算订单状态枚举
@@ -15,13 +16,16 @@ import com.payment.domain.repository.*; // 结算领域仓储
 import com.payment.domain.service.ShardRouteService;
 import com.payment.control.service.AlertService; // 告警服务
 import com.payment.settlement.account.AccountOperator; // 账户操作组件
+import com.payment.settlement.account.AccountPostingClient;
 import com.payment.settlement.channel.MockPaymentChannel; // 模拟支付渠道
+import org.springframework.beans.factory.ObjectProvider;
 import org.slf4j.Logger; // 日志接口
 import org.slf4j.LoggerFactory; // 日志工厂
 import org.springframework.stereotype.Service; // Spring 服务注解
 import org.springframework.transaction.annotation.Transactional; // 事务注解
 
 import java.math.BigDecimal; // 高精度数值
+import java.time.Instant;
 import java.time.LocalDate; // 本地日期
 import java.time.LocalDateTime; // 本地日期时间
 import java.util.List; // 列表
@@ -44,6 +48,8 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     private final AlertService alertService; // 告警服务
     private final ShardRouteService shardRouteService; // 分片路由
     private final BizSeqGenerator seqGenerator; // 单号生成器（Redis/本地）
+    private final PayAccountProperties accountProperties;
+    private final ObjectProvider<AccountPostingClient> accountPostingClient;
 
     /**
      * 构造注入依赖。
@@ -57,7 +63,9 @@ public class SettleAccountServiceImpl implements SettleAccountService {
                                     MockPaymentChannel paymentChannel,
                                     AlertService alertService,
                                     ShardRouteService shardRouteService,
-                                    BizSeqGenerator seqGenerator) {
+                                    BizSeqGenerator seqGenerator,
+                                    PayAccountProperties accountProperties,
+                                    ObjectProvider<AccountPostingClient> accountPostingClient) {
         this.accountOperator = accountOperator; // 赋值账户操作
         this.accountRepository = accountRepository; // 赋值账户仓储
         this.contractRepository = contractRepository; // 赋值合约仓储
@@ -68,6 +76,8 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         this.alertService = alertService; // 赋值告警服务
         this.shardRouteService = shardRouteService; // 分片路由
         this.seqGenerator = seqGenerator;
+        this.accountProperties = accountProperties;
+        this.accountPostingClient = accountPostingClient;
     }
 
     /**
@@ -77,6 +87,9 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     @Transactional // 开启事务
     @DbRateLimit(layer = DbRateLimitLayer.SETTLEMENT)
     public void creditBalance(Long merchantId, String billNo, BigDecimal amount) {
+        if (accountProperties.isAccountOnly()) {
+            return;
+        }
         BigDecimal remain = amount; // 剩余待入账金额
         List<MerchantPayableSuspendEntity> suspends = suspendRepository // 查询未结清挂账
                 .findByMerchantIdAndStatusOrderByCreateTimeAsc(merchantId, 0);
@@ -106,6 +119,9 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     @Transactional // 开启事务
     @DbRateLimit(layer = DbRateLimitLayer.SETTLEMENT)
     public void debitRefundBalance(Long merchantId, String billNo, BigDecimal amount) {
+        if (accountProperties.isAccountOnly()) {
+            return;
+        }
         try { // 尝试扣款
             accountOperator.debit(merchantId, billNo, amount); // 扣减待结算余额
         } catch (BizException e) { // 业务异常
@@ -136,9 +152,19 @@ public class SettleAccountServiceImpl implements SettleAccountService {
                 .orElse(new BigDecimal("100.00")); // 默认 100 元
         SettleAccountDTO dto = new SettleAccountDTO(); // 创建 DTO
         dto.merchantId = merchantId; // 商户 ID
-        dto.waitBalance = account.waitBalance; // 待结算余额
-        dto.frozenBalance = account.frozenBalance; // 冻结余额
-        dto.availableBalance = account.waitBalance; // 可用余额
+        if (accountProperties.isAccountOnly()) {
+            AccountPostingClient client = requireAccountClient();
+            var settleBalance = client.querySettleBalance(merchantId);
+            var frozenBalance = client.queryFrozenBalance(merchantId);
+            // MERCHANT_FROZEN 使用 available 桶（双逻辑账户模型），非 frozen 字段
+            dto.waitBalance = settleBalance.available();
+            dto.frozenBalance = frozenBalance.available();
+            dto.availableBalance = settleBalance.available();
+        } else {
+            dto.waitBalance = account.waitBalance; // 待结算余额
+            dto.frozenBalance = account.frozenBalance; // 冻结余额
+            dto.availableBalance = account.waitBalance; // 可用余额
+        }
         dto.settleMode = account.settleMode; // 结算模式
         dto.minWithdraw = minWithdraw; // 最低提现额
         return dto; // 返回 DTO
@@ -170,6 +196,9 @@ public class SettleAccountServiceImpl implements SettleAccountService {
 
         MerchantSettleAccountEntity account = accountRepository.findByMerchantId(merchantId) // 查询账户
                 .orElseThrow(() -> BizException.of(ErrorCode.MERCHANT_INVALID)); // 商户不存在
+        if (accountProperties.isAccountOnly()) {
+            return applyWithdrawViaAccount(request, contract, account);
+        }
         if (account.waitBalance.compareTo(amount) < 0) { // 余额不足
             throw BizException.of(ErrorCode.INSUFFICIENT_BALANCE);
         }
@@ -213,6 +242,61 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         return result; // 返回结果
     }
 
+    private WithdrawResultDTO applyWithdrawViaAccount(WithdrawApplyDTO request,
+                                                      MerchantContractEntity contract,
+                                                      MerchantSettleAccountEntity account) {
+        Long merchantId = request.merchantId;
+        BigDecimal amount = request.withdrawAmount;
+        AccountPostingClient client = requireAccountClient();
+        var settleBalance = client.querySettleBalance(merchantId);
+        if (settleBalance.available().compareTo(amount) < 0) {
+            throw BizException.of(ErrorCode.INSUFFICIENT_BALANCE);
+        }
+
+        String cardNo = request.settleCardNo != null ? request.settleCardNo : account.settleCardNo;
+        String applyNo = seqGenerator.applyNo();
+        String settleNo = seqGenerator.settleNo();
+
+        SettlementOrderEntity order = new SettlementOrderEntity();
+        order.settleNo = settleNo;
+        order.merchantId = merchantId;
+        order.settleAmount = amount;
+        order.settleMode = SettleMode.D0.getCode();
+        order.settleCardNo = cardNo;
+        order.status = SettleOrderStatus.CREATED.getCode();
+        order.createTime = LocalDateTime.now();
+        order.updateTime = LocalDateTime.now();
+        settlementOrderRepository.save(order);
+        shardRouteService.registerSettleRoute(settleNo, merchantId);
+
+        client.freeze(merchantId, settleNo, amount, Instant.now());
+
+        order.status = SettleOrderStatus.PAYING.getCode();
+        order.updateTime = LocalDateTime.now();
+        settlementOrderRepository.save(order);
+
+        WithdrawApplyEntity apply = new WithdrawApplyEntity();
+        apply.applyNo = applyNo;
+        apply.merchantId = merchantId;
+        apply.amount = amount;
+        apply.settleNo = settleNo;
+        apply.status = 1;
+        apply.createTime = LocalDateTime.now();
+        withdrawApplyRepository.save(apply);
+
+        paymentChannel.submitAsync(settleNo, amount);
+
+        var updatedSettle = client.querySettleBalance(merchantId);
+        var updatedFrozen = client.queryFrozenBalance(merchantId);
+        WithdrawResultDTO result = new WithdrawResultDTO();
+        result.applyNo = applyNo;
+        result.settleNo = settleNo;
+        result.status = 1;
+        result.waitBalance = updatedSettle.available();
+        result.frozenBalance = updatedFrozen.available();
+        return result;
+    }
+
     /**
      * 处理支付渠道回调。
      */
@@ -228,11 +312,19 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         }
 
         if ("SUCCESS".equalsIgnoreCase(callback.status)) { // 支付成功
-            accountOperator.deductFrozen(order.merchantId, order.settleNo, order.settleAmount); // 扣减冻结余额
+            if (accountProperties.isAccountOnly()) {
+                requireAccountClient().deduct(order.merchantId, order.settleNo, order.settleAmount, Instant.now());
+            } else {
+                accountOperator.deductFrozen(order.merchantId, order.settleNo, order.settleAmount); // 扣减冻结余额
+            }
             order.status = SettleOrderStatus.SUCCESS.getCode(); // 更新为成功
             order.channelTradeNo = callback.channelTradeNo; // 记录渠道流水号
         } else { // 支付失败
-            accountOperator.unfreeze(order.merchantId, order.settleNo, order.settleAmount); // 解冻余额
+            if (accountProperties.isAccountOnly()) {
+                requireAccountClient().unfreeze(order.merchantId, order.settleNo, order.settleAmount, Instant.now());
+            } else {
+                accountOperator.unfreeze(order.merchantId, order.settleNo, order.settleAmount); // 解冻余额
+            }
             order.status = SettleOrderStatus.FAILED.getCode(); // 更新为失败
             order.failReason = callback.failReason; // 记录失败原因
             alertService.send(AlertService.PAYMENT_FAIL, order.settleNo + ": " + callback.failReason); // 发送告警
@@ -256,8 +348,10 @@ public class SettleAccountServiceImpl implements SettleAccountService {
             return; // 跳过
         }
 
-        List<MerchantSettleAccountEntity> accounts = accountRepository // 查询 T1 模式且余额≥1 的账户
-                .findBySettleModeAndWaitBalanceGreaterThanEqualOrderByMerchantIdAsc(
+        // ACCOUNT_ONLY：本地 wait_balance 不再维护，按 settle_mode 扫候选，金额以账务为准
+        List<MerchantSettleAccountEntity> accounts = accountProperties.isAccountOnly()
+                ? accountRepository.findBySettleModeOrderByMerchantIdAsc(SettleMode.T1.getCode())
+                : accountRepository.findBySettleModeAndWaitBalanceGreaterThanEqualOrderByMerchantIdAsc(
                         SettleMode.T1.getCode(), BigDecimal.ONE);
 
         int processed = 0; // 处理计数
@@ -280,7 +374,13 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         BigDecimal minSettle = contractRepository.findByMerchantId(account.merchantId) // 查询最低结算额
                 .map(c -> c.minWithdraw) // 取合约配置
                 .orElse(new BigDecimal("1.00")); // 默认 1 元
-        if (account.waitBalance.compareTo(minSettle) < 0) { // 余额不足
+        BigDecimal amount;
+        if (accountProperties.isAccountOnly()) {
+            amount = requireAccountClient().querySettleBalance(account.merchantId).available();
+        } else {
+            amount = account.waitBalance;
+        }
+        if (amount.compareTo(minSettle) < 0) { // 余额不足
             return false; // 跳过
         }
         if (account.settleCardNo == null || account.settleCardNo.isBlank()) { // 无结算卡
@@ -293,8 +393,29 @@ public class SettleAccountServiceImpl implements SettleAccountService {
             return false; // 跳过
         }
 
-        BigDecimal amount = account.waitBalance; // 全额结算
         String settleNo = seqGenerator.settleNo(); // 生成结算单号
+        if (accountProperties.isAccountOnly()) {
+            AccountPostingClient client = requireAccountClient();
+            SettlementOrderEntity order = new SettlementOrderEntity();
+            order.settleNo = settleNo;
+            order.merchantId = account.merchantId;
+            order.settleAmount = amount;
+            order.settleMode = SettleMode.T1.getCode();
+            order.settleCardNo = account.settleCardNo;
+            order.status = SettleOrderStatus.CREATED.getCode();
+            order.originSettleNo = batchNo;
+            order.createTime = LocalDateTime.now();
+            order.updateTime = LocalDateTime.now();
+            settlementOrderRepository.save(order);
+            shardRouteService.registerSettleRoute(settleNo, account.merchantId);
+            client.freeze(account.merchantId, settleNo, amount, Instant.now());
+            order.status = SettleOrderStatus.PAYING.getCode();
+            order.updateTime = LocalDateTime.now();
+            settlementOrderRepository.save(order);
+            paymentChannel.submitAsync(settleNo, amount);
+            return true;
+        }
+
         accountOperator.freeze(account.merchantId, settleNo, amount); // 冻结余额
 
         SettlementOrderEntity order = new SettlementOrderEntity(); // 创建结算订单
@@ -347,6 +468,31 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     private void retryOnePayment(SettlementOrderEntity failedOrder) {
         MerchantSettleAccountEntity account = accountRepository.findByMerchantId(failedOrder.merchantId) // 查询账户
                 .orElseThrow(() -> BizException.of(ErrorCode.MERCHANT_INVALID)); // 商户不存在
+        if (accountProperties.isAccountOnly()) {
+            AccountPostingClient client = requireAccountClient();
+            if (client.querySettleBalance(failedOrder.merchantId).available().compareTo(failedOrder.settleAmount) < 0) {
+                return;
+            }
+            String settleNo = seqGenerator.settleNo();
+            SettlementOrderEntity order = new SettlementOrderEntity();
+            order.settleNo = settleNo;
+            order.merchantId = failedOrder.merchantId;
+            order.settleAmount = failedOrder.settleAmount;
+            order.settleMode = failedOrder.settleMode;
+            order.settleCardNo = failedOrder.settleCardNo;
+            order.status = SettleOrderStatus.CREATED.getCode();
+            order.originSettleNo = failedOrder.settleNo;
+            order.createTime = LocalDateTime.now();
+            order.updateTime = LocalDateTime.now();
+            settlementOrderRepository.save(order);
+            shardRouteService.registerSettleRoute(settleNo, failedOrder.merchantId);
+            client.freeze(failedOrder.merchantId, settleNo, failedOrder.settleAmount, Instant.now());
+            order.status = SettleOrderStatus.PAYING.getCode();
+            order.updateTime = LocalDateTime.now();
+            settlementOrderRepository.save(order);
+            paymentChannel.submitAsync(settleNo, failedOrder.settleAmount);
+            return;
+        }
         if (account.waitBalance.compareTo(failedOrder.settleAmount) < 0) { // 余额不足
             return; // 跳过
         }
@@ -368,5 +514,13 @@ public class SettleAccountServiceImpl implements SettleAccountService {
         shardRouteService.registerSettleRoute(settleNo, failedOrder.merchantId); // 注册分片路由
 
         paymentChannel.submitAsync(settleNo, failedOrder.settleAmount); // 异步提交支付
+    }
+
+    private AccountPostingClient requireAccountClient() {
+        AccountPostingClient client = accountPostingClient.getIfAvailable();
+        if (client == null) {
+            throw BizException.of(ErrorCode.INVALID_PARAM, "account posting client unavailable");
+        }
+        return client;
     }
 }

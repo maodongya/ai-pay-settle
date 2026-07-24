@@ -68,6 +68,22 @@ CREATE TABLE IF NOT EXISTS outbox_message (
   create_time TIMESTAMP NOT NULL COMMENT '创建时间'
 ) COMMENT='可靠消息Outbox';
 
+CREATE TABLE IF NOT EXISTS account_posting_outbox (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id VARCHAR(64) NOT NULL,
+  merchant_id BIGINT NOT NULL,
+  biz_no VARCHAR(128) NOT NULL,
+  biz_type VARCHAR(32) NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TINYINT NOT NULL DEFAULT 0 COMMENT '0 pending 1 success 2 failed',
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error VARCHAR(512) NULL,
+  transaction_no VARCHAR(64) NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_posting (tenant_id, biz_no, biz_type)
+) COMMENT='账务过账发件箱';
+
 CREATE TABLE IF NOT EXISTS merchant_settle_account (
   account_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '账户ID',
   merchant_id BIGINT NOT NULL UNIQUE COMMENT '商户ID',
@@ -154,6 +170,7 @@ CREATE TABLE IF NOT EXISTS reconcile_bill (
 CREATE INDEX idx_clearance_status_shard ON clearance_task (status, shard_id);
 CREATE INDEX idx_clearance_next_retry ON clearance_task (status, next_retry_time);
 CREATE INDEX idx_outbox_status_time ON outbox_message (status, create_time);
+CREATE INDEX idx_account_posting_status ON account_posting_outbox (status, create_time);
 CREATE INDEX idx_account_flow_merchant_time ON account_flow (merchant_id, create_time);
 CREATE INDEX idx_withdraw_settle_merchant ON withdraw_apply (settle_no, merchant_id);
 CREATE INDEX idx_suspend_merchant_status ON merchant_payable_suspend (merchant_id, status, create_time);

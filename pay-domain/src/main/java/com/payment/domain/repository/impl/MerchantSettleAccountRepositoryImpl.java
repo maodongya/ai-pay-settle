@@ -55,6 +55,13 @@ public class MerchantSettleAccountRepositoryImpl implements MerchantSettleAccoun
     }
 
     @Override
+    public List<MerchantSettleAccountEntity> findBySettleModeOrderByMerchantIdAsc(Integer settleMode) {
+        return merchantSettleAccountMapper.selectList(new QueryWrapper<MerchantSettleAccountEntity>()
+                .eq("settle_mode", settleMode)
+                .orderByAsc("merchant_id"));
+    }
+
+    @Override
     public List<MerchantSettleAccountEntity> findAll() {
         return merchantSettleAccountMapper.selectList(new QueryWrapper<>());
     }

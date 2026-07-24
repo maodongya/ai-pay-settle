@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.ObjectMapper; // JSON 对象映射器
 import com.payment.api.dto.AgentRelationDTO; // 代理关系 DTO
 import com.payment.api.dto.FeeCalcResultDTO; // 费用计算结果 DTO
 import com.payment.api.service.SplitService; // 分账服务接口
+import com.payment.common.config.PayAccountProperties;
 import com.payment.common.enums.Direction; // 借贷方向枚举
 import com.payment.common.enums.PartyType; // 参与方类型枚举
 import com.payment.common.metrics.PayBusinessMetrics; // 业务吞吐指标
+import com.payment.domain.entity.AccountPostingOutboxEntity;
 import com.payment.domain.entity.AccountVoucherEntity; // 会计凭证实体
 import com.payment.domain.entity.OutboxMessageEntity; // 发件箱消息实体
 import com.payment.domain.entity.SplitDetailEntity; // 分账明细实体
+import com.payment.domain.repository.AccountPostingOutboxRepository;
 import com.payment.domain.repository.AccountVoucherRepository; // 会计凭证仓储
 import com.payment.domain.repository.OutboxMessageRepository; // 发件箱消息仓储
 import com.payment.domain.repository.SplitDetailRepository; // 分账明细仓储
@@ -32,12 +35,16 @@ import java.util.Map; // 映射
 public class SplitServiceImpl implements SplitService {
 
     private static final String SETTLE_TOPIC = "settle_amount_topic"; // 结算消息主题
+    private static final String BIZ_TYPE_CREDIT = "SETTLE_CREDIT";
+    private static final String BIZ_TYPE_DEBIT = "SETTLE_DEBIT";
 
     private final SplitDetailRepository splitDetailRepository; // 分账明细仓储
     private final AccountVoucherRepository accountVoucherRepository; // 会计凭证仓储
     private final OutboxMessageRepository outboxMessageRepository; // 发件箱消息仓储
+    private final AccountPostingOutboxRepository accountPostingOutboxRepository;
     private final ObjectMapper objectMapper; // JSON 映射器
     private final PayBusinessMetrics businessMetrics; // 业务吞吐指标
+    private final PayAccountProperties accountProperties;
 
     /**
      * 构造注入依赖。
@@ -45,13 +52,17 @@ public class SplitServiceImpl implements SplitService {
     public SplitServiceImpl(SplitDetailRepository splitDetailRepository,
                             AccountVoucherRepository accountVoucherRepository,
                             OutboxMessageRepository outboxMessageRepository,
+                            AccountPostingOutboxRepository accountPostingOutboxRepository,
                             ObjectMapper objectMapper,
-                            PayBusinessMetrics businessMetrics) {
+                            PayBusinessMetrics businessMetrics,
+                            PayAccountProperties accountProperties) {
         this.splitDetailRepository = splitDetailRepository; // 赋值分账仓储
         this.accountVoucherRepository = accountVoucherRepository; // 赋值凭证仓储
         this.outboxMessageRepository = outboxMessageRepository; // 赋值发件箱仓储
+        this.accountPostingOutboxRepository = accountPostingOutboxRepository;
         this.objectMapper = objectMapper; // 赋值 JSON 映射器
         this.businessMetrics = businessMetrics; // 赋值指标
+        this.accountProperties = accountProperties;
     }
 
     /**
@@ -67,22 +78,65 @@ public class SplitServiceImpl implements SplitService {
         List<SplitDetailEntity> details = buildDetails(calcResult, relation); // 构建分账明细
         splitDetailRepository.saveAll(details); // 批量保存明细
 
-        if (!accountVoucherRepository.existsByBillNo(calcResult.billNo)) { // 凭证不存在
-            List<AccountVoucherEntity> vouchers = VoucherGenerator.buildVouchers(calcResult); // 生成凭证
-            accountVoucherRepository.saveAll(vouchers); // 批量保存凭证
-        }
+        if (accountProperties.isAccountOnly()) {
+            writeAccountPostingOutbox(calcResult);
+        } else {
+            if (!accountVoucherRepository.existsByBillNo(calcResult.billNo)) { // 凭证不存在
+                List<AccountVoucherEntity> vouchers = VoucherGenerator.buildVouchers(calcResult); // 生成凭证
+                accountVoucherRepository.saveAll(vouchers); // 批量保存凭证
+            }
 
-        if (calcResult.merchantIncome.compareTo(BigDecimal.ZERO) != 0) { // 商户收入非零
-            OutboxMessageEntity outbox = new OutboxMessageEntity(); // 创建发件箱消息
-            outbox.bizKey = calcResult.billNo; // 业务键
-            outbox.merchantId = calcResult.merchantId; // 分片键
-            outbox.topic = SETTLE_TOPIC; // 消息主题
-            outbox.payload = buildSettlePayload(calcResult); // 构建载荷
-            outbox.status = 0; // 待发送状态
-            outbox.createTime = LocalDateTime.now(); // 创建时间
-            outboxMessageRepository.save(outbox); // 保存消息
+            if (calcResult.merchantIncome.compareTo(BigDecimal.ZERO) != 0) { // 商户收入非零
+                OutboxMessageEntity outbox = new OutboxMessageEntity(); // 创建发件箱消息
+                outbox.bizKey = calcResult.billNo; // 业务键
+                outbox.merchantId = calcResult.merchantId; // 分片键
+                outbox.topic = SETTLE_TOPIC; // 消息主题
+                outbox.payload = buildSettlePayload(calcResult); // 构建载荷
+                outbox.status = 0; // 待发送状态
+                outbox.createTime = LocalDateTime.now(); // 创建时间
+                outboxMessageRepository.save(outbox); // 保存消息
+            }
         }
         businessMetrics.recordSplitDone(calcResult.billNo, 0);
+    }
+
+    private void writeAccountPostingOutbox(FeeCalcResultDTO calcResult) {
+        if (calcResult.merchantIncome.compareTo(BigDecimal.ZERO) == 0
+                && (calcResult.platformFee == null || calcResult.platformFee.compareTo(BigDecimal.ZERO) == 0)) {
+            return;
+        }
+        String bizType = calcResult.merchantIncome.signum() < 0 ? BIZ_TYPE_DEBIT : BIZ_TYPE_CREDIT;
+        if (accountPostingOutboxRepository.existsByBizKey(
+                accountProperties.getTenantId(), calcResult.billNo, bizType)) {
+            return;
+        }
+        AccountPostingOutboxEntity outbox = new AccountPostingOutboxEntity();
+        outbox.tenantId = accountProperties.getTenantId();
+        outbox.merchantId = calcResult.merchantId;
+        outbox.bizNo = calcResult.billNo;
+        outbox.bizType = bizType;
+        outbox.payloadJson = buildAccountPostingPayload(calcResult);
+        outbox.status = 0;
+        outbox.retryCount = 0;
+        outbox.createTime = LocalDateTime.now();
+        outbox.updateTime = LocalDateTime.now();
+        accountPostingOutboxRepository.save(outbox);
+    }
+
+    private String buildAccountPostingPayload(FeeCalcResultDTO calcResult) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("merchantId", calcResult.merchantId);
+        payload.put("billNo", calcResult.billNo);
+        payload.put("merchantIncome", calcResult.merchantIncome);
+        payload.put("platformFee", calcResult.platformFee != null ? calcResult.platformFee : BigDecimal.ZERO);
+        payload.put("tradeAmount", calcResult.tradeAmount);
+        payload.put("bizTime", LocalDateTime.now().toString());
+        payload.put("direction", calcResult.merchantIncome.signum() < 0 ? "DEBIT" : "CREDIT");
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**

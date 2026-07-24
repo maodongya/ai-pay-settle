@@ -46,6 +46,14 @@ pay:
   db:
     init:
       enabled: true
+  account:
+    enabled: false
+    tenant-id: TENANT_DEMO
+    caller-id: ai-pay-settle
+    url: dubbo://127.0.0.1:50051
+    posting-mode: LOCAL
+    currency: CNY
+    dispatch-interval-ms: 3000
   shard:
     enabled: false
   mq:
@@ -79,6 +87,22 @@ pay:
       gap-critical: 100
       drop-ratio-warn: 0.3
       drop-ratio-critical: 0.5
+
+dubbo:
+  application:
+    name: pay-settle-consumer
+    qos-enable: false
+    serialize-check-status: DISABLE
+  protocol:
+    name: dubbo
+    serialization: fastjson2
+    prefer-serialization: fastjson2
+  registry:
+    address: ${DUBBO_REGISTRY_ADDRESS:N/A}
+  consumer:
+    timeout: 3000
+    retries: 0
+    check: false
 
 logging:
   level:

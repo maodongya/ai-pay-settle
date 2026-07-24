@@ -39,6 +39,8 @@
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <dynamic-datasource.version>4.3.1</dynamic-datasource.version>
         <shardingsphere.version>5.5.1</shardingsphere.version>
+        <dubbo.version>3.3.0</dubbo.version>
+        <pay-account-api.version>1.0.0-SNAPSHOT</pay-account-api.version>
     </properties>
 
     <dependencyManagement>
@@ -102,6 +104,21 @@
                 <groupId>org.apache.shardingsphere</groupId>
                 <artifactId>shardingsphere-jdbc</artifactId>
                 <version>${shardingsphere.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.payment.account</groupId>
+                <artifactId>pay-account-api</artifactId>
+                <version>${pay-account-api.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.dubbo</groupId>
+                <artifactId>dubbo-spring-boot-starter</artifactId>
+                <version>${dubbo.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.dubbo</groupId>
+                <artifactId>dubbo-serialization-fastjson2</artifactId>
+                <version>${dubbo.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

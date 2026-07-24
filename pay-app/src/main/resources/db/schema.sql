@@ -118,6 +118,23 @@ CREATE TABLE IF NOT EXISTS outbox_message (
   create_time TIMESTAMP NOT NULL COMMENT '创建时间'
 ) COMMENT='可靠消息Outbox';
 
+-- 账务过账发件箱
+CREATE TABLE IF NOT EXISTS account_posting_outbox (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id VARCHAR(64) NOT NULL,
+  merchant_id BIGINT NOT NULL,
+  biz_no VARCHAR(128) NOT NULL,
+  biz_type VARCHAR(32) NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TINYINT NOT NULL DEFAULT 0 COMMENT '0 pending 1 success 2 failed',
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error VARCHAR(512) NULL,
+  transaction_no VARCHAR(64) NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_posting (tenant_id, biz_no, biz_type)
+) COMMENT='账务过账发件箱';
+
 -- 商户中间待结算账户
 CREATE TABLE IF NOT EXISTS merchant_settle_account (
   account_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '账户ID',
@@ -245,12 +262,3 @@ CREATE TABLE IF NOT EXISTS exception_record (
   status TINYINT NOT NULL DEFAULT 0 COMMENT '0待处理 1处理中 2已解决 3已忽略',
   create_time TIMESTAMP NOT NULL COMMENT '创建时间'
 ) COMMENT='异常工单';
-
--- 性能优化索引（MQ 消费与重试）
-CREATE INDEX IF NOT EXISTS idx_clearance_status_shard ON clearance_task (status, shard_id);
-CREATE INDEX IF NOT EXISTS idx_clearance_next_retry ON clearance_task (status, next_retry_time);
-CREATE INDEX IF NOT EXISTS idx_outbox_status_time ON outbox_message (status, create_time);
-CREATE INDEX IF NOT EXISTS idx_account_flow_merchant_time ON account_flow (merchant_id, create_time);
-CREATE INDEX IF NOT EXISTS idx_withdraw_settle_merchant ON withdraw_apply (settle_no, merchant_id);
-CREATE INDEX IF NOT EXISTS idx_suspend_merchant_status ON merchant_payable_suspend (merchant_id, status, create_time);
-CREATE INDEX IF NOT EXISTS idx_account_flow_settle_op ON account_flow (settle_no, op_type);

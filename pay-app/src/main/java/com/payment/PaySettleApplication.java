@@ -8,9 +8,12 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.payment.common.config.PayAccountProperties;
+import org.apache.dubbo.config.spring.context.annotation.EnableDubbo;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -22,6 +25,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @MapperScan("com.payment.domain.mapper")
 @EnableScheduling
 @EnableAsync
+@EnableDubbo
+@EnableConfigurationProperties(PayAccountProperties.class)
 public class PaySettleApplication {
 
     public static void main(String[] args) {
