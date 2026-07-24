@@ -1,8 +1,10 @@
 package com.payment.access.controller; // 接入层控制器包
 
+import com.payment.api.dto.ConsoleOverviewDTO; // 控制台概览 DTO
 import com.payment.api.dto.FeeRuleSubmitDTO; // 费率规则提交 DTO
 import com.payment.api.dto.FeeRuleSubmitResultDTO; // 费率规则提交结果 DTO
 import com.payment.api.dto.ReconcileBillDTO; // 对账单 DTO
+import com.payment.api.service.ConsoleDashboardService; // 控制台概览服务
 import com.payment.api.service.FeeRuleService; // 费率规则服务接口
 import com.payment.api.service.ReconcileService; // 对账服务接口
 import com.payment.common.model.ApiResponse; // 统一 API 响应
@@ -20,13 +22,25 @@ public class ConsoleController {
 
     private final FeeRuleService feeRuleService; // 费率规则服务
     private final ReconcileService reconcileService; // 对账服务
+    private final ConsoleDashboardService consoleDashboardService; // 控制台概览服务
 
     /**
      * 构造注入依赖。
      */
-    public ConsoleController(FeeRuleService feeRuleService, ReconcileService reconcileService) {
+    public ConsoleController(FeeRuleService feeRuleService,
+                             ReconcileService reconcileService,
+                             ConsoleDashboardService consoleDashboardService) {
         this.feeRuleService = feeRuleService; // 赋值规则服务
         this.reconcileService = reconcileService; // 赋值对账服务
+        this.consoleDashboardService = consoleDashboardService; // 赋值概览服务
+    }
+
+    /**
+     * 查询整体清算概览。
+     */
+    @GetMapping("/console/overview")
+    public ApiResponse<ConsoleOverviewDTO> overview() {
+        return ApiResponse.ok(consoleDashboardService.getOverview());
     }
 
     /**

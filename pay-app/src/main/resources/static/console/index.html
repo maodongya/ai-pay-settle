@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Pay Settle 清算控制台</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --border: #334155;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --info: #818cf8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0%, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button, .btn {
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: 0.2s ease;
+    }
+
+    button:hover, .btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      border-color: transparent;
+      color: white;
+    }
+
+    .status-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      backdrop-filter: blur(8px);
+    }
+
+    .card .label {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .card .hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .card.success .value { color: var(--success); }
+    .card.warning .value { color: var(--warning); }
+    .card.danger .value { color: var(--danger); }
+    .card.info .value { color: var(--info); }
+    .card.primary .value { color: var(--primary); }
+
+    .section {
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(31, 41, 55, 0.6);
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 12px 18px 0;
+    }
+
+    .tab {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .tab.active {
+      color: white;
+      border-color: var(--primary);
+      background: rgba(56, 189, 248, 0.15);
+    }
+
+    .panel { display: none; padding: 0 18px 18px; }
+    .panel.active { display: block; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      padding: 10px 8px;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+
+    .badge.success { color: var(--success); border-color: rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.12); }
+    .badge.warning { color: var(--warning); border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.12); }
+    .badge.danger { color: var(--danger); border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.12); }
+    .badge.info { color: var(--info); border-color: rgba(129, 140, 248, 0.35); background: rgba(129, 140, 248, 0.12); }
+    .badge.neutral { color: var(--muted); border-color: rgba(148, 163, 184, 0.35); background: rgba(148, 163, 184, 0.12); }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .empty {
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .error {
+      color: var(--danger);
+      padding: 12px 18px;
+      display: none;
+    }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .nowrap { white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>AI Pay Settle 清算控制台</h1>
+        <p>整体清算情况监控 · 账单 / 任务 / 账户 / 结算 / 对账</p>
+      </div>
+      <div class="actions">
+        <span id="lastUpdated" class="status-bar">加载中...</span>
+        <button id="refreshBtn" class="primary">刷新数据</button>
+      </div>
+    </header>
+
+    <div id="errorBox" class="error"></div>
+
+    <section class="cards" id="summaryCards"></section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>清算明细</h2>
+      </div>
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-tab="bills">交易账单</button>
+        <button class="tab" data-tab="tasks">清算任务</button>
+        <button class="tab" data-tab="accounts">结算账户</button>
+        <button class="tab" data-tab="orders">结算单</button>
+        <button class="tab" data-tab="flows">账户流水</button>
+        <button class="tab" data-tab="reconcile">对账记录</button>
+      </div>
+      <div id="panel-bills" class="panel active"></div>
+      <div id="panel-tasks" class="panel"></div>
+      <div id="panel-accounts" class="panel"></div>
+      <div id="panel-orders" class="panel"></div>
+      <div id="panel-flows" class="panel"></div>
+      <div id="panel-reconcile" class="panel"></div>
+    </section>
+
+    <div class="grid-2">
+      <section class="section">
+        <div class="section-header">
+          <h2>对账单下载</h2>
+        </div>
+        <form id="reconcileForm">
+          <label>商户 ID
+            <input type="number" name="merchantId" value="100001" required>
+          </label>
+          <label>账单日期
+            <input type="date" name="billDate" required>
+          </label>
+          <button type="submit" class="primary">下载对账单</button>
+          <textarea id="reconcileResult" readonly placeholder="对账单 CSV 内容将显示在这里"></textarea>
+        </form>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <h2>费率规则提交</h2>
+        </div>
+        <form id="feeRuleForm">
+          <label>规则名称
+            <input type="text" name="ruleName" value="Console demo rule" required>
+          </label>
+          <label>目标类型
+            <input type="number" name="targetType" value="1" required>
+          </label>
+          <label>业务线 / 品类 / 服务项目 / 城市
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <input type="text" name="businessLine" value="*">
+              <input type="text" name="category" value="*">
+              <input type="text" name="serviceItem" value="*">
+              <input type="text" name="cityCode" value="*">
+            </div>
+          </label>
+          <label>分润模式 / 首月值 / 阶梯递减 / 最低分润
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+              <input type="number" name="shareMode" value="1">
+              <input type="number" step="0.0001" name="firstMonthValue" value="0.0060">
+              <input type="number" step="0.0001" name="stepDownVal" value="0">
+              <input type="number" step="0.0001" name="minShare" value="0">
+            </div>
+          </label>
+          <label>提交人 ID
+            <input type="number" name="submitterId" value="900001">
+          </label>
+          <button type="submit" class="primary">提交规则</button>
+          <textarea id="feeRuleResult" readonly placeholder="提交结果将显示在这里"></textarea>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const API = {
+      overview: '/api/v1/console/overview',
+      reconcile: '/api/v1/settlement/reconcile/download',
+      feeRule: '/api/v1/console/fee-rule/submit'
+    };
+
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    function money(v) {
+      if (v === null || v === undefined) return '-';
+      return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function fmtTime(v) {
+      if (!v) return '-';
+      return v.replace('T', ' ').slice(0, 19);
+    }
+
+    function badge(text, kind) {
+      return `<span class="badge ${kind || 'neutral'}">${text || '-'}</span>`;
+    }
+
+    function statusBadge(name) {
+      if (!name) return badge('-', 'neutral');
+      if (name.includes('成功') || name.includes('已清分')) return badge(name, 'success');
+      if (name.includes('失败') || name.includes('死信')) return badge(name, 'danger');
+      if (name.includes('中') || name.includes('待') || name.includes('冻结') || name.includes('打款')) return badge(name, 'warning');
+      return badge(name, 'info');
+    }
+
+    function renderSummary(summary) {
+      const cards = [
+        { label: '待处理账单', value: summary.pendingBills, cls: 'warning', hint: `清分中 ${summary.clearingBills}` },
+        { label: '已清分账单', value: summary.clearedBills, cls: 'success', hint: `失败 ${summary.failedBills}` },
+        { label: '待执行任务', value: summary.pendingTasks, cls: 'warning', hint: `执行中 ${summary.runningTasks}` },
+        { label: '成功任务', value: summary.successTasks, cls: 'success', hint: `失败 ${summary.failedTasks} / 死信 ${summary.deadTasks}` },
+        { label: '待结算余额', value: money(summary.totalWaitBalance), cls: 'primary', hint: '全部商户合计' },
+        { label: '冻结余额', value: money(summary.totalFrozenBalance), cls: 'info', hint: '全部商户合计' },
+        { label: '打款中', value: summary.payingOrders, cls: 'warning', hint: `成功 ${summary.successOrders}` },
+        { label: '打款失败', value: summary.failedOrders, cls: 'danger', hint: `争议 ${summary.disputeOrders}` }
+      ];
+      document.getElementById('summaryCards').innerHTML = cards.map(c => `
+        <article class="card ${c.cls}">
+          <div class="label">${c.label}</div>
+          <div class="value">${c.value}</div>
+          <div class="hint">${c.hint}</div>
+        </article>
+      `).join('');
+    }
+
+    function table(columns, rows, emptyText) {
+      if (!rows || rows.length === 0) {
+        return `<div class="empty">${emptyText}</div>`;
+      }
+      return `
+        <table>
+          <thead><tr>${columns.map(c => `<th>${c.title}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${rows.map(row => `<tr>${columns.map(c => `<td>${c.render(row)}</td>`).join('')}</tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    function renderTables(data) {
+      document.getElementById('panel-bills').innerHTML = table([
+        { title: '账单号', render: r => `<span class="mono">${r.billNo || '-'}</span>` },
+        { title: '商户', render: r => r.merchantId ?? '-' },
+        { title: '金额', render: r => money(r.tradeAmount) },
+        { title: '状态', render: r => statusBadge(r.statusName) },
+        { title: '业务线', render: r => r.businessLine || '-' },
+        { title: '创建时间', render: r => `<span class="nowrap">${fmtTime(r.createTime)}</span>` }
+      ], data.recentBills, '暂无交易账单');
+
+      document.getElementById('panel-tasks').innerHTML = table([
+        { title: '账单号', render: r => `<span class="mono">${r.billNo || '-'}</span>` },
+        { title: '商户', render: r => r.merchantId ?? '-' },
+        { title: '状态', render: r => statusBadge(r.statusName) },
+        { title: '重试', render: r => r.retryCount ?? 0 },
+        { title: '错误信息', render: r => r.errorMsg || '-' },
+        { title: '下次重试', render: r => `<span class="nowrap">${fmtTime(r.nextRetryTime)}</span>` },
+        { title: '更新时间', render: r => `<span class="nowrap">${fmtTime(r.updateTime)}</span>` }
+      ], data.recentTasks, '暂无清算任务');
+
+      document.getElementById('panel-accounts').innerHTML = table([
+        { title: '商户', render: r => r.merchantId ?? '-' },
+        { title: '待结算', render: r => money(r.waitBalance) },
+        { title: '冻结', render: r => money(r.frozenBalance) },
+        { title: '可用', render: r => money(r.availableBalance) },
+        { title: '结算模式', render: r => r.settleMode ?? '-' },
+        { title: '结算卡号', render: r => `<span class="mono">${r.settleCardNo || '-'}</span>` }
+      ], data.accounts, '暂无结算账户');
+
+      document.getElementById('panel-orders').innerHTML = table([
+        { title: '结算单号', render: r => `<span class="mono">${r.settleNo || '-'}</span>` },
+        { title: '商户', render: r => r.merchantId ?? '-' },
+        { title: '金额', render: r => money(r.settleAmount) },
+        { title: '状态', render: r => statusBadge(r.statusName) },
+        { title: '渠道单号', render: r => r.channelTradeNo || '-' },
+        { title: '失败原因', render: r => r.failReason || '-' },
+        { title: '更新时间', render: r => `<span class="nowrap">${fmtTime(r.updateTime)}</span>` }
+      ], data.recentSettleOrders, '暂无结算单');
+
+      document.getElementById('panel-flows').innerHTML = table([
+        { title: '商户', render: r => r.merchantId ?? '-' },
+        { title: '账单号', render: r => r.billNo || '-' },
+        { title: '结算单号', render: r => r.settleNo || '-' },
+        { title: '操作类型', render: r => r.opType ?? '-' },
+        { title: '变动金额', render: r => money(r.amount) },
+        { title: '变动前', render: r => money(r.beforeBalance) },
+        { title: '变动后', render: r => money(r.afterBalance) },
+        { title: '时间', render: r => `<span class="nowrap">${fmtTime(r.createTime)}</span>` }
+      ], data.recentFlows, '暂无账户流水');
+
+      document.getElementById('panel-reconcile').innerHTML = table([
+        { title: '商户', render: r => r.merchantId ?? '-' },
+        { title: '账单日期', render: r => r.billDate || '-' },
+        { title: '总收入', render: r => money(r.totalIncome) },
+        { title: '总结算', render: r => money(r.totalSettle) },
+        { title: '文件', render: r => r.fileUrl || '-' }
+      ], data.recentReconcileBills, '暂无对账记录');
+    }
+
+    async function loadOverview() {
+      const errorBox = document.getElementById('errorBox');
+      errorBox.style.display = 'none';
+      try {
+        const resp = await fetch(API.overview);
+        const json = await resp.json();
+        if (json.code !== 0) {
+          throw new Error(json.message || '加载概览失败');
+        }
+        renderSummary(json.data.summary);
+        renderTables(json.data);
+        document.getElementById('lastUpdated').textContent =
+          `最近更新：${fmtTime(json.data.generatedAt)} · traceId ${json.traceId || '-'}`;
+      } catch (err) {
+        errorBox.textContent = err.message || String(err);
+        errorBox.style.display = 'block';
+      }
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadOverview);
+
+    document.getElementById('reconcileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const merchantId = form.merchantId.value;
+      const billDate = form.billDate.value;
+      const out = document.getElementById('reconcileResult');
+      out.value = '请求中...';
+      try {
+        const resp = await fetch(`${API.reconcile}?merchantId=${merchantId}&billDate=${billDate}`);
+        const json = await resp.json();
+        out.value = JSON.stringify(json, null, 2);
+        if (json.code === 0) {
+          await loadOverview();
+        }
+      } catch (err) {
+        out.value = err.message || String(err);
+      }
+    });
+
+    document.getElementById('feeRuleForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const payload = {
+        ruleName: form.ruleName.value,
+        targetType: Number(form.targetType.value),
+        businessLine: form.businessLine.value,
+        category: form.category.value,
+        serviceItem: form.serviceItem.value,
+        cityCode: form.cityCode.value,
+        shareMode: Number(form.shareMode.value),
+        firstMonthValue: Number(form.firstMonthValue.value),
+        stepDownVal: Number(form.stepDownVal.value),
+        minShare: Number(form.minShare.value),
+        validStart: new Date().toISOString().slice(0, 19),
+        submitterId: Number(form.submitterId.value)
+      };
+      const out = document.getElementById('feeRuleResult');
+      out.value = '提交中...';
+      try {
+        const resp = await fetch(API.feeRule, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await resp.json();
+        out.value = JSON.stringify(json, null, 2);
+      } catch (err) {
+        out.value = err.message || String(err);
+      }
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    document.querySelector('#reconcileForm input[name="billDate"]').value = today;
+
+    loadOverview();
+    setInterval(loadOverview, 30000);
+  </script>
+</body>
+</html>
