@@ -31,4 +31,7 @@ public interface TradeBillRepository {
 
     /** 按分片查询最近单据（路由补偿 Job） */
     List<TradeBillEntity> findRecentByShardId(int shardId, int limit);
+
+    /** 按状态 + 分片扫描（缺任务补偿 Job） */
+    List<TradeBillEntity> findByStatusAndShardId(Integer status, int shardId, int limit);
 }

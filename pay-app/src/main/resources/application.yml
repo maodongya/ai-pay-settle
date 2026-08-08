@@ -61,6 +61,7 @@ pay:
     split-interval-ms: 600000
     outbox-interval-ms: 600000
     bill-route-interval-ms: 600000
+    clearance-task-interval-ms: 60000
   clearance:
     retry-interval-ms: 3600000
     watchdog-interval-ms: 300000

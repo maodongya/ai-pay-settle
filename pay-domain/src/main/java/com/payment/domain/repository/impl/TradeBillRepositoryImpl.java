@@ -76,4 +76,14 @@ public class TradeBillRepositoryImpl implements TradeBillRepository {
                 .orderByDesc("create_time")
                 .last("LIMIT " + limit));
     }
+
+    @Override
+    public List<TradeBillEntity> findByStatusAndShardId(Integer status, int shardId, int limit) {
+        QueryWrapper<TradeBillEntity> wrapper = new QueryWrapper<>();
+        ShardQueryHelper.eqShardId(wrapper, shardId);
+        return tradeBillMapper.selectList(wrapper
+                .eq("status", status)
+                .orderByAsc("create_time")
+                .last("LIMIT " + limit));
+    }
 }
