@@ -32,31 +32,32 @@ public final class VoucherGenerator {
      */
     public static List<AccountVoucherEntity> buildVouchers(FeeCalcResultDTO calc) {
         List<AccountVoucherEntity> list = new ArrayList<>(); // 创建凭证列表
-        add(list, calc.billNo, RESERVE, PAYABLE_MERCHANT, calc.tradeAmount); // 备付金→应付商户
-        addIfPositive(list, calc.billNo, PAYABLE_MERCHANT, FEE_INCOME, calc.platformFee); // 应付商户→手续费收入
-        addIfPositive(list, calc.billNo, PAYABLE_MERCHANT, PAYABLE_L1, calc.agentL1Share); // 应付商户→应付一级代理
-        addIfPositive(list, calc.billNo, PAYABLE_MERCHANT, PAYABLE_L2, calc.agentL2Share); // 应付商户→应付二级代理
-        addIfPositive(list, calc.billNo, PAYABLE_MERCHANT, PAYABLE_PARTNER, calc.partnerShare); // 应付商户→应付合作方
+        add(list, calc.billNo, calc.merchantId, RESERVE, PAYABLE_MERCHANT, calc.tradeAmount); // 备付金→应付商户
+        addIfPositive(list, calc.billNo, calc.merchantId, PAYABLE_MERCHANT, FEE_INCOME, calc.platformFee); // 应付商户→手续费收入
+        addIfPositive(list, calc.billNo, calc.merchantId, PAYABLE_MERCHANT, PAYABLE_L1, calc.agentL1Share); // 应付商户→应付一级代理
+        addIfPositive(list, calc.billNo, calc.merchantId, PAYABLE_MERCHANT, PAYABLE_L2, calc.agentL2Share); // 应付商户→应付二级代理
+        addIfPositive(list, calc.billNo, calc.merchantId, PAYABLE_MERCHANT, PAYABLE_PARTNER, calc.partnerShare); // 应付商户→应付合作方
         return list; // 返回凭证列表
     }
 
     /**
      * 金额为正时才添加凭证。
      */
-    private static void addIfPositive(List<AccountVoucherEntity> list, String billNo,
+    private static void addIfPositive(List<AccountVoucherEntity> list, String billNo, Long merchantId,
                                       String debit, String credit, BigDecimal amount) {
         if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) { // 金额正数
-            add(list, billNo, debit, credit, amount); // 添加凭证
+            add(list, billNo, merchantId, debit, credit, amount); // 添加凭证
         }
     }
 
     /**
      * 添加一条借贷凭证。
      */
-    private static void add(List<AccountVoucherEntity> list, String billNo,
+    private static void add(List<AccountVoucherEntity> list, String billNo, Long merchantId,
                             String debit, String credit, BigDecimal amount) {
         AccountVoucherEntity v = new AccountVoucherEntity(); // 创建凭证
         v.billNo = billNo; // 账单号
+        v.merchantId = merchantId; // 分片键
         v.debitSubject = debit; // 借方科目
         v.creditSubject = credit; // 贷方科目
         v.amount = amount.abs(); // 凭证金额

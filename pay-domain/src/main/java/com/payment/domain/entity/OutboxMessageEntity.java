@@ -2,6 +2,7 @@ package com.payment.domain.entity; // 实体包声明
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -22,6 +23,9 @@ public class OutboxMessageEntity {
     /** 业务唯一键 */
     @TableField("biz_key") // 非空，最大长度 64
     public String bizKey;
+
+    @TableField(value = "merchant_id", updateStrategy = FieldStrategy.NEVER)
+    public Long merchantId;
 
     /** 消息主题 */
     public String topic; // 非空，最大长度 64

@@ -1,0 +1,103 @@
+# 生产分片模式：ShardingSphere 驱动 data 数据源，config 仍走 pay_config
+# 连接池预算见 docs/mq/整体优化方案批量写入.md、docs/db/数据库连接池优化.md（单实例物理峰值 ~72）
+spring:
+  config:
+    activate:
+      on-profile: sharding
+  datasource:
+    dynamic:
+      primary: data
+      strict: true
+      hikari:
+        pool-name: dynamic-default
+        maximum-pool-size: 28
+        minimum-idle: 4
+        connection-timeout: 30000
+        idle-timeout: 600000
+        max-lifetime: 1800000
+        connection-test-query: SELECT 1
+        leak-detection-threshold: 60000
+      datasource:
+        config:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://127.0.0.1:3306/pay_config?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
+          username: root
+          password: 123456
+          hikari:
+            pool-name: pay-config
+            maximum-pool-size: 16
+            minimum-idle: 4
+            connection-timeout: 30000
+            idle-timeout: 600000
+            max-lifetime: 1800000
+            connection-test-query: SELECT 1
+        data:
+          driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+          url: jdbc:shardingsphere:classpath:shardingsphere.yaml
+          hikari:
+            pool-name: pay-data-shard-proxy
+            # 对齐 access+calc+settle(+payment) 消费线程合计，避免代理池先打满
+            maximum-pool-size: 28
+            minimum-idle: 4
+            connection-timeout: 30000
+            idle-timeout: 600000
+            max-lifetime: 1800000
+            connection-test-query: SELECT 1
+    hikari:
+      pool-name: spring-hikari-fallback
+      maximum-pool-size: 28
+      minimum-idle: 4
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+  sql:
+    init:
+      schema-locations: classpath:db/schema-data.sql
+      data-locations: classpath:db/data-config.sql
+  task:
+    scheduling:
+      enabled: true
+
+management:
+  health:
+    db:
+      enabled: true
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    enable:
+      hikaricp: true
+
+pay:
+  shard:
+    enabled: true
+  db:
+    init:
+      enabled: true
+      config-schema-locations: classpath:db/schema-config.sql
+    shard-init:
+      enabled: true
+  mq:
+    backlog:
+      circuit-enabled: false
+      check-interval-ms: 120000
+    consumer:
+      # 与 30 TPS 限流对齐，降低并发持连
+      access-thread-max: 6
+      calc-thread-max: 8
+      settlement-thread-max: 4
+      settlement-payment-thread-max: 2
+  calc:
+    metrics-interval-ms: 30000
+  db-rate-limit:
+    enabled: true
+    access-tps: 30
+    calc-tps: 30
+    settlement-tps: 30
+  outbox:
+    dispatch-interval-ms: 3000
+    dispatch-batch-size: 50
+  loadtest:
+    pause-jobs: false

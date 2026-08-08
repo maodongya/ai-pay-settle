@@ -7,5 +7,9 @@ import com.payment.domain.entity.AlertRecordEntity;
  */
 public interface AlertRecordRepository {
 
+    /** 保存或更新告警记录 */
     AlertRecordEntity save(AlertRecordEntity entity);
+
+    /** 未处理告警数 */
+    long countOpen();
 }

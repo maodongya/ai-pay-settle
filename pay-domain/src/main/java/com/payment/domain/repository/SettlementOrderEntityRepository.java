@@ -11,18 +11,35 @@ import java.util.Optional;
  */
 public interface SettlementOrderEntityRepository {
 
+    /** 保存或更新结算单 */
     SettlementOrderEntity save(SettlementOrderEntity entity);
 
+    /** 按结算单号查询 */
     Optional<SettlementOrderEntity> findBySettleNo(String settleNo);
 
+    /** 按商户 ID 与状态查询结算单 */
     List<SettlementOrderEntity> findByMerchantIdAndStatus(Long merchantId, Integer status);
 
+    /** 按状态查询结算单 */
     List<SettlementOrderEntity> findByStatus(Integer status);
 
+    /** 按商户 ID、状态与更新时间范围查询 */
     List<SettlementOrderEntity> findByMerchantIdAndStatusAndUpdateTimeBetween(
             Long merchantId, Integer status, LocalDateTime start, LocalDateTime end);
 
+    /** 按原结算单号判断是否存在 */
     boolean existsByOriginSettleNo(String originSettleNo);
 
+    /** 按原结算单号判断是否存在非指定状态的记录 */
     boolean existsByOriginSettleNoAndStatusNot(String originSettleNo, Integer status);
+
+    /** 是否存在支付中结算单（提现/T1 前置检查） */
+    boolean existsPayingByMerchantId(Long merchantId);
+
+    /** 支付回调单 SQL 更新 */
+    int updatePaymentResult(String settleNo, Long merchantId, Integer expectedStatus, Integer newStatus,
+                            String channelTradeNo, String failReason, LocalDateTime now);
+
+    /** 按状态查询前 N 条失败单（重试 Job 限流） */
+    List<SettlementOrderEntity> findTopNByStatus(Integer status, int limit);
 }

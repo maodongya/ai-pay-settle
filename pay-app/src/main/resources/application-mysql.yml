@@ -1,12 +1,59 @@
+# 单库模式（与 sharding 互斥）。启用 sharding 时由 application-sharding.yml 接管数据源。
 spring:
+  config:
+    activate:
+      on-profile: "mysql & !sharding"
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/pay_settle?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    username: root
-    password: 123456
+    dynamic:
+      primary: data
+      strict: true
+      hikari:
+        pool-name: dynamic-default
+        maximum-pool-size: 30
+        minimum-idle: 8
+        connection-timeout: 30000
+        idle-timeout: 600000
+        max-lifetime: 1800000
+        connection-test-query: SELECT 1
+      datasource:
+        config:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://127.0.0.1:3306/pay_settle?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
+          username: root
+          password: 123456
+          hikari:
+            pool-name: pay-config-single
+            maximum-pool-size: 16
+            minimum-idle: 4
+            connection-timeout: 30000
+        data:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://127.0.0.1:3306/pay_settle?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
+          username: root
+          password: 123456
+          hikari:
+            pool-name: pay-data-single
+            maximum-pool-size: 24
+            minimum-idle: 6
+            connection-timeout: 30000
+    hikari:
+      pool-name: spring-hikari-fallback
+      maximum-pool-size: 30
+      minimum-idle: 8
+      connection-timeout: 30000
+      max-lifetime: 1800000
+      idle-timeout: 600000
+      connection-test-query: SELECT 1
   sql:
     init:
       mode: never
       schema-locations: classpath:db/schema.sql
       data-locations: classpath:db/data-mysql.sql
       encoding: UTF-8
+
+pay:
+  shard:
+    enabled: false
+  db:
+    init:
+      enabled: true

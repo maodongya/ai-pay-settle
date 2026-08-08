@@ -1,0 +1,131 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "宿主机 CPU %",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "expr": "100 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100", "legendFormat": "cpu" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 85 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "宿主机内存 %",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [{ "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100", "legendFormat": "mem" }],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "type": "stat",
+      "title": "MySQL 连接数",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [{ "expr": "mysql_global_status_threads_connected", "legendFormat": "conn" }]
+    },
+    {
+      "type": "stat",
+      "title": "Redis 客户端",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "redis_connected_clients", "legendFormat": "clients" }]
+    },
+    {
+      "type": "stat",
+      "title": "pay-app 状态",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "up{job=\"pay-settle\"}", "legendFormat": "up" }],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }] } }
+    },
+    {
+      "type": "stat",
+      "title": "MQ 熔断",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [{ "expr": "pay_mq_circuit_open", "legendFormat": "circuit" }],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "CLOSED", "color": "green" }, "1": { "text": "OPEN", "color": "red" } } }] } }
+    },
+    {
+      "type": "timeseries",
+      "title": "宿主机 CPU / 内存趋势",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "100 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100", "legendFormat": "cpu %" },
+        { "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100", "legendFormat": "mem %" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "容器 CPU（核心服务）",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"mysql8|redis7|rmq-namesrv|rmq-broker|pay-prometheus|pay-grafana\"}[5m])) by (name)", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "容器内存（核心服务）",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "container_memory_usage_bytes{name=~\"mysql8|redis7|rmq-namesrv|rmq-broker|pay-prometheus|pay-grafana\"}", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "MySQL QPS / 连接",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "rate(mysql_global_status_questions[5m])", "legendFormat": "qps" },
+        { "expr": "mysql_global_status_threads_connected", "legendFormat": "connections" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis 内存 / OPS",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "redis_memory_used_bytes", "legendFormat": "used" },
+        { "expr": "rate(redis_commands_processed_total[5m])", "legendFormat": "ops/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "RocketMQ 消费滞后（Exporter）",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        { "expr": "sum(rocketmq_group_diff) by (group)", "legendFormat": "{{group}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "RocketMQ Broker TPS",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        { "expr": "rocketmq_producer_tps", "legendFormat": "produce {{broker}}" },
+        { "expr": "rocketmq_consumer_tps", "legendFormat": "consume {{broker}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "应用 MQ Lag / DLQ（Micrometer）",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        { "expr": "pay_mq_consumer_lag", "legendFormat": "{{group}}/{{topic}}" },
+        { "expr": "pay_mq_dlq_count", "legendFormat": "dlq {{group}}" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["pay-settle", "infra", "fullstack"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "全方位基础设施",
+  "uid": "pay-infra-fullstack",
+  "version": 1
+}

@@ -15,7 +15,10 @@ import java.time.LocalDateTime; // 本地日期时间
 public class AlertService {
 
     public static final String PAYMENT_FAIL = "PAYMENT_FAIL"; // 支付失败告警类型
-    public static final int LEVEL_ERROR = 3; // 错误级别
+    public static final String CLEARANCE_DEAD = "CLEARANCE_DEAD"; // 清算 DEAD 告警
+    public static final String MQ_DLQ = "MQ_DLQ"; // DLQ 非空告警
+    public static final String MQ_BACKLOG = "MQ_BACKLOG"; // MQ 积压告警
+    public static final int LEVEL_ERROR = 3; // 错误级别（P1）
     public static final int LEVEL_WARN = 2; // 警告级别
 
     private static final Logger log = LoggerFactory.getLogger(AlertService.class); // 日志记录器

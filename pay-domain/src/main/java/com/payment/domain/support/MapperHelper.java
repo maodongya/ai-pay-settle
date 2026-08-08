@@ -17,6 +17,7 @@ public final class MapperHelper {
     private MapperHelper() {
     }
 
+    /** 按主键是否为空决定 insert 或 updateById */
     public static <T> T save(BaseMapper<T> mapper, T entity) {
         if (entity == null) {
             return null;
@@ -30,6 +31,9 @@ public final class MapperHelper {
         return entity;
     }
 
+    /**
+     * 逐条 save。热路径批量插入请走 Mapper#insertBatch（见 SplitDetail / AccountVoucher Repository）。
+     */
     public static <T> List<T> saveAll(BaseMapper<T> mapper, List<T> entities) {
         if (entities == null || entities.isEmpty()) {
             return entities;

@@ -6,6 +6,22 @@ spring:
     name: pay-settle
   profiles:
     active: mysql
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 32
+          max-idle: 16
+          min-idle: 4
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000
+      cache-null-values: false
   sql:
     init:
       mode: never
@@ -22,10 +38,16 @@ mybatis-plus:
       id-type: auto
       table-underline: true
 
+payment:
+  redis:
+    enabled: true
+
 pay:
   db:
     init:
       enabled: true
+  shard:
+    enabled: false
   mq:
     enabled: false
     name-server: 127.0.0.1:9876
@@ -37,6 +59,8 @@ pay:
     dispatch-interval-ms: 3000
   compensate:
     split-interval-ms: 600000
+    outbox-interval-ms: 600000
+    bill-route-interval-ms: 600000
   clearance:
     retry-interval-ms: 3600000
     watchdog-interval-ms: 300000
@@ -44,10 +68,33 @@ pay:
     t1-cron: "0 0 2 * * ?"
     reconcile-cron: "0 0 4 * * ?"
     payment-retry-cron: "0 30 * * * ?"
+  monitor:
+    db:
+      enabled: true
+      check-interval-ms: 300000
+    tps:
+      enabled: true
+      check-interval-ms: 60000
+      gap-warn: 30
+      gap-critical: 100
+      drop-ratio-warn: 0.3
+      drop-ratio-critical: 0.5
 
 logging:
   level:
     com.payment: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: pay-settle
 
 ---
 # pay.db.init.enabled=false 时跳过 SQL 初始化（适用于已有数据的 MySQL 环境）

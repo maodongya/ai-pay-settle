@@ -1,7 +1,5 @@
 package com.payment.api.dto; // API 数据传输对象所在包
 
-import java.math.BigDecimal; // 高精度金额类型
-
 /**
  * 支付回调 DTO，封装支付渠道打款结果回调数据
  */

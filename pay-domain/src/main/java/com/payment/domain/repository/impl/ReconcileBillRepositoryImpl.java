@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.util.Optional;
 
+/**
+ * {@link ReconcileBillRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class ReconcileBillRepositoryImpl implements ReconcileBillRepository {
 

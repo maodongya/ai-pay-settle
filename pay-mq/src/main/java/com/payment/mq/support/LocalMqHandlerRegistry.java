@@ -8,16 +8,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 本地模式 Handler 注册表：按 Topic 路由到 {@link com.payment.mq.MqMessageHandler}。
+ */
 @Component
 public class LocalMqHandlerRegistry {
 
     private final ObjectProvider<List<MqMessageHandler>> handlerProvider;
     private volatile Map<String, MqMessageHandler> handlers;
 
+    /**
+     * 构造注入 Handler 列表提供者（延迟加载）。
+     */
     public LocalMqHandlerRegistry(ObjectProvider<List<MqMessageHandler>> handlerProvider) {
         this.handlerProvider = handlerProvider;
     }
 
+    /**
+     * 按 Topic 同步分发消息到对应 Handler。
+     */
     public void dispatch(String topic, String payload) {
         MqMessageHandler handler = handlerMap().get(topic);
         if (handler == null) {

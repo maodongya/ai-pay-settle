@@ -1,0 +1,240 @@
+# ShardingSphere 5.5 — 4 库 × 4 表 = 16 分片，分片键 merchant_id
+# 内层 Hikari：每库 maximumPoolSize=16，单实例物理预算 64 + config16 ≈ 80
+databaseName: pay_data_sharding
+
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_00?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
+    username: root
+    password: 123456
+    poolName: shard-ds-00
+    maximumPoolSize: 16
+    minimumIdle: 2
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    connectionTestQuery: SELECT 1
+  ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_01?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
+    username: root
+    password: 123456
+    poolName: shard-ds-01
+    maximumPoolSize: 16
+    minimumIdle: 2
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    connectionTestQuery: SELECT 1
+  ds_2:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_02?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
+    username: root
+    password: 123456
+    poolName: shard-ds-02
+    maximumPoolSize: 16
+    minimumIdle: 2
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    connectionTestQuery: SELECT 1
+  ds_3:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/pay_data_03?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&rewriteBatchedStatements=true
+    username: root
+    password: 123456
+    poolName: shard-ds-03
+    maximumPoolSize: 16
+    minimumIdle: 2
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    connectionTestQuery: SELECT 1
+
+rules:
+  - !SHARDING
+    tables:
+      trade_bill:
+        actualDataNodes: ds_${0..3}.trade_bill_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-trade-bill
+      clearance_task:
+        actualDataNodes: ds_${0..3}.clearance_task_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-clearance-task
+      fee_calc_result:
+        actualDataNodes: ds_${0..3}.fee_calc_result_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-fee-calc-result
+      split_detail:
+        actualDataNodes: ds_${0..3}.split_detail_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-split-detail
+      account_voucher:
+        actualDataNodes: ds_${0..3}.account_voucher_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-account-voucher
+      outbox_message:
+        actualDataNodes: ds_${0..3}.outbox_message_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-outbox-message
+      merchant_settle_account:
+        actualDataNodes: ds_${0..3}.merchant_settle_account_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-merchant-settle-account
+      account_flow:
+        actualDataNodes: ds_${0..3}.account_flow_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-account-flow
+      settlement_order:
+        actualDataNodes: ds_${0..3}.settlement_order_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-settlement-order
+      withdraw_apply:
+        actualDataNodes: ds_${0..3}.withdraw_apply_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-withdraw-apply
+      merchant_payable_suspend:
+        actualDataNodes: ds_${0..3}.merchant_payable_suspend_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-merchant-payable-suspend
+      reconcile_bill:
+        actualDataNodes: ds_${0..3}.reconcile_bill_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: merchant-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: merchant_id
+            shardingAlgorithmName: tbl-reconcile-bill
+    bindingTables:
+      - trade_bill,clearance_task,fee_calc_result,split_detail,account_voucher,outbox_message
+      - merchant_settle_account,account_flow,settlement_order,withdraw_apply,merchant_payable_suspend,reconcile_bill
+    shardingAlgorithms:
+      merchant-db-inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_$->{(merchant_id % 16).intdiv(4)}
+      tbl-trade-bill:
+        type: INLINE
+        props:
+          algorithm-expression: trade_bill_$->{(merchant_id % 16) % 4}
+      tbl-clearance-task:
+        type: INLINE
+        props:
+          algorithm-expression: clearance_task_$->{(merchant_id % 16) % 4}
+      tbl-fee-calc-result:
+        type: INLINE
+        props:
+          algorithm-expression: fee_calc_result_$->{(merchant_id % 16) % 4}
+      tbl-split-detail:
+        type: INLINE
+        props:
+          algorithm-expression: split_detail_$->{(merchant_id % 16) % 4}
+      tbl-account-voucher:
+        type: INLINE
+        props:
+          algorithm-expression: account_voucher_$->{(merchant_id % 16) % 4}
+      tbl-outbox-message:
+        type: INLINE
+        props:
+          algorithm-expression: outbox_message_$->{(merchant_id % 16) % 4}
+      tbl-merchant-settle-account:
+        type: INLINE
+        props:
+          algorithm-expression: merchant_settle_account_$->{(merchant_id % 16) % 4}
+      tbl-account-flow:
+        type: INLINE
+        props:
+          algorithm-expression: account_flow_$->{(merchant_id % 16) % 4}
+      tbl-settlement-order:
+        type: INLINE
+        props:
+          algorithm-expression: settlement_order_$->{(merchant_id % 16) % 4}
+      tbl-withdraw-apply:
+        type: INLINE
+        props:
+          algorithm-expression: withdraw_apply_$->{(merchant_id % 16) % 4}
+      tbl-merchant-payable-suspend:
+        type: INLINE
+        props:
+          algorithm-expression: merchant_payable_suspend_$->{(merchant_id % 16) % 4}
+      tbl-reconcile-bill:
+        type: INLINE
+        props:
+          algorithm-expression: reconcile_bill_$->{(merchant_id % 16) % 4}
+
+props:
+  sql-show: false

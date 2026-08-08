@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS clearance_task (
   status TINYINT NOT NULL DEFAULT 0 COMMENT '任务状态：0待执行 1执行中 2成功 3失败 4死信',
   retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
   error_msg VARCHAR(512) COMMENT '失败原因',
+  next_retry_time TIMESTAMP COMMENT '下次业务重试时间',
   create_time TIMESTAMP NOT NULL COMMENT '创建时间',
   update_time TIMESTAMP NOT NULL COMMENT '更新时间'
 ) COMMENT='清算任务';
@@ -98,6 +99,7 @@ CREATE TABLE IF NOT EXISTS fee_calc_result (
 CREATE TABLE IF NOT EXISTS split_detail (
   id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
   bill_no VARCHAR(64) NOT NULL COMMENT '账单号',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
   party_type TINYINT NOT NULL COMMENT '参与方类型：1平台 2一级代理 3二级代理 4合伙人 5商户',
   party_id BIGINT NOT NULL COMMENT '参与方ID',
   amount DECIMAL(18,2) NOT NULL COMMENT '清分金额',
@@ -109,6 +111,7 @@ CREATE TABLE IF NOT EXISTS split_detail (
 CREATE TABLE IF NOT EXISTS outbox_message (
   id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
   biz_key VARCHAR(64) NOT NULL COMMENT '业务键',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
   topic VARCHAR(64) NOT NULL COMMENT '消息主题',
   payload TEXT NOT NULL COMMENT '消息载荷(JSON)',
   status TINYINT NOT NULL COMMENT '发送状态：0待发送 1已发送',
@@ -184,6 +187,7 @@ CREATE TABLE IF NOT EXISTS merchant_payable_suspend (
 CREATE TABLE IF NOT EXISTS account_voucher (
   voucher_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '凭证ID',
   bill_no VARCHAR(64) NOT NULL COMMENT '关联账单号',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
   debit_subject VARCHAR(32) NOT NULL COMMENT '借方科目',
   credit_subject VARCHAR(32) NOT NULL COMMENT '贷方科目',
   amount DECIMAL(18,2) NOT NULL COMMENT '凭证金额',
@@ -203,6 +207,21 @@ CREATE TABLE IF NOT EXISTS reconcile_bill (
   CONSTRAINT uk_merchant_date UNIQUE (merchant_id, bill_date)
 ) COMMENT='商户对账单';
 
+-- 单据分片路由（config 库）
+CREATE TABLE IF NOT EXISTS bill_route (
+  bill_no VARCHAR(64) NOT NULL PRIMARY KEY COMMENT '清算单据号',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
+  bill_type TINYINT NOT NULL COMMENT '单据类型',
+  create_time TIMESTAMP NOT NULL COMMENT '创建时间'
+) COMMENT='单据分片路由索引';
+
+-- 结算单分片路由（config 库）
+CREATE TABLE IF NOT EXISTS settle_route (
+  settle_no VARCHAR(64) NOT NULL PRIMARY KEY COMMENT '结算单号',
+  merchant_id BIGINT NOT NULL COMMENT '商户ID，分片键',
+  create_time TIMESTAMP NOT NULL COMMENT '创建时间'
+) COMMENT='结算单分片路由索引';
+
 -- 告警记录
 CREATE TABLE IF NOT EXISTS alert_record (
   alert_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '告警ID',
@@ -212,3 +231,26 @@ CREATE TABLE IF NOT EXISTS alert_record (
   status TINYINT NOT NULL DEFAULT 0 COMMENT '处理状态：0未处理 1已处理',
   create_time TIMESTAMP NOT NULL COMMENT '创建时间'
 ) COMMENT='告警记录';
+
+-- 异常工单（清算 DEAD / DLQ 等）
+CREATE TABLE IF NOT EXISTS exception_record (
+  exception_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '工单ID',
+  exception_no VARCHAR(32) NOT NULL UNIQUE COMMENT '工单号',
+  exception_code VARCHAR(16) NOT NULL COMMENT '异常编码',
+  severity TINYINT NOT NULL COMMENT '严重级别',
+  biz_domain VARCHAR(16) NOT NULL COMMENT '业务域',
+  biz_key VARCHAR(64) NOT NULL COMMENT '业务键',
+  title VARCHAR(128) NOT NULL COMMENT '标题',
+  detail VARCHAR(1024) COMMENT '详情',
+  status TINYINT NOT NULL DEFAULT 0 COMMENT '0待处理 1处理中 2已解决 3已忽略',
+  create_time TIMESTAMP NOT NULL COMMENT '创建时间'
+) COMMENT='异常工单';
+
+-- 性能优化索引（MQ 消费与重试）
+CREATE INDEX IF NOT EXISTS idx_clearance_status_shard ON clearance_task (status, shard_id);
+CREATE INDEX IF NOT EXISTS idx_clearance_next_retry ON clearance_task (status, next_retry_time);
+CREATE INDEX IF NOT EXISTS idx_outbox_status_time ON outbox_message (status, create_time);
+CREATE INDEX IF NOT EXISTS idx_account_flow_merchant_time ON account_flow (merchant_id, create_time);
+CREATE INDEX IF NOT EXISTS idx_withdraw_settle_merchant ON withdraw_apply (settle_no, merchant_id);
+CREATE INDEX IF NOT EXISTS idx_suspend_merchant_status ON merchant_payable_suspend (merchant_id, status, create_time);
+CREATE INDEX IF NOT EXISTS idx_account_flow_settle_op ON account_flow (settle_no, op_type);

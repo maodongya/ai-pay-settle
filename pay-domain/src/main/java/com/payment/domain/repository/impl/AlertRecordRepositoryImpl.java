@@ -1,11 +1,15 @@
 package com.payment.domain.repository.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.payment.domain.entity.AlertRecordEntity;
 import com.payment.domain.mapper.AlertRecordMapper;
 import com.payment.domain.repository.AlertRecordRepository;
 import com.payment.domain.support.MapperHelper;
 import org.springframework.stereotype.Repository;
 
+/**
+ * {@link AlertRecordRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class AlertRecordRepositoryImpl implements AlertRecordRepository {
 
@@ -18,5 +22,11 @@ public class AlertRecordRepositoryImpl implements AlertRecordRepository {
     @Override
     public AlertRecordEntity save(AlertRecordEntity entity) {
         return MapperHelper.save(alertRecordMapper, entity);
+    }
+
+    @Override
+    public long countOpen() {
+        return alertRecordMapper.selectCount(new QueryWrapper<AlertRecordEntity>()
+                .eq("status", 0));
     }
 }

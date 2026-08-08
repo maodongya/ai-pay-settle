@@ -2,6 +2,7 @@ package com.payment.domain.entity; // 实体包声明
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -22,7 +23,7 @@ public class MerchantSettleAccountEntity {
     public Long accountId;
 
     /** 商户 ID（唯一） */
-    @TableField("merchant_id") // 非空且唯一，列名 merchant_id
+    @TableField(value = "merchant_id", updateStrategy = FieldStrategy.NEVER) // 非空且唯一，列名 merchant_id
     public Long merchantId;
 
     /** 待结算余额 */

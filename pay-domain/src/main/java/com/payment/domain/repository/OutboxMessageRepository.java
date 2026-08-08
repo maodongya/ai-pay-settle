@@ -9,7 +9,27 @@ import java.util.List;
  */
 public interface OutboxMessageRepository {
 
+    /** 保存或更新 Outbox 消息 */
     OutboxMessageEntity save(OutboxMessageEntity entity);
 
+    /** 按状态查询前 100 条，按创建时间升序 */
     List<OutboxMessageEntity> findTop100ByStatusOrderByCreateTimeAsc(Integer status);
+
+    /** 按状态查询前 N 条，按创建时间升序（Outbox 批量派发） */
+    List<OutboxMessageEntity> findTopNByStatusOrderByCreateTimeAsc(Integer status, int limit);
+
+    /** 按分片查询 pending Outbox（Job 分片扫描） */
+    List<OutboxMessageEntity> findTopNByStatusAndShardIdOrderByCreateTimeAsc(Integer status, int shardId, int limit);
+
+    /** 统计指定状态的 Outbox 行数（积压监控） */
+    long countByStatus(Integer status);
+
+    /** 最老待发送 Outbox 的年龄（秒），无 pending 时返回 0 */
+    long oldestPendingAgeSeconds();
+
+    /** 按业务键查询（补偿 Job 判断是否已有 Outbox） */
+    boolean existsByBizKey(String bizKey);
+
+    /** 单 SQL 标记已发送（短事务，merchantId 精准路由） */
+    int markSentByIdAndMerchantId(Long id, Long merchantId);
 }

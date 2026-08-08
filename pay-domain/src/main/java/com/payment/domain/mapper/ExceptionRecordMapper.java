@@ -1,0 +1,17 @@
+package com.payment.domain.mapper; // Mapper 包
+
+import com.baomidou.dynamic.datasource.annotation.DS;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper; // MyBatis-Plus 基础 Mapper
+import com.payment.domain.datasource.DataSourceNames;
+import com.payment.domain.entity.ExceptionRecordEntity; // 实体
+import org.apache.ibatis.annotations.Mapper; // MyBatis 注解
+
+/**
+ * 异常工单表 Mapper，映射 exception_record 表。
+ * 数据源：config 配置库。
+ */
+@Mapper // 扫描注册
+@DS(DataSourceNames.CONFIG)
+public interface ExceptionRecordMapper extends BaseMapper<ExceptionRecordEntity> {
+    // 使用 BaseMapper 自带 CRUD
+}

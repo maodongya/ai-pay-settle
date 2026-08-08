@@ -2,6 +2,7 @@ package com.payment.domain.entity; // 实体包声明
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -23,6 +24,9 @@ public class AccountVoucherEntity {
     /** 关联账单号 */
     @TableField("bill_no") // 非空，最大长度 64
     public String billNo;
+
+    @TableField(value = "merchant_id", updateStrategy = FieldStrategy.NEVER)
+    public Long merchantId;
 
     /** 借方科目 */
     @TableField("debit_subject") // 非空，最大长度 32

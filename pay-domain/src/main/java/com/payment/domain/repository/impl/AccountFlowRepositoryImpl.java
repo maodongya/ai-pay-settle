@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * {@link AccountFlowRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class AccountFlowRepositoryImpl implements AccountFlowRepository {
 
@@ -28,6 +31,13 @@ public class AccountFlowRepositoryImpl implements AccountFlowRepository {
     public boolean existsByBillNoAndOpType(String billNo, Integer opType) {
         return accountFlowMapper.selectCount(new QueryWrapper<AccountFlowEntity>()
                 .eq("bill_no", billNo)
+                .eq("op_type", opType)) > 0;
+    }
+
+    @Override
+    public boolean existsBySettleNoAndOpType(String settleNo, Integer opType) {
+        return accountFlowMapper.selectCount(new QueryWrapper<AccountFlowEntity>()
+                .eq("settle_no", settleNo)
                 .eq("op_type", opType)) > 0;
     }
 

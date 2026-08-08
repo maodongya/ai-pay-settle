@@ -9,5 +9,6 @@ import java.util.Optional;
  */
 public interface MerchantContractRepository {
 
+    /** 按商户 ID 查询合同 */
     Optional<MerchantContractEntity> findByMerchantId(Long merchantId);
 }

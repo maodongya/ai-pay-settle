@@ -1,9 +1,53 @@
 # RocketMQ 联调/压测 Profile（配合 --spring.profiles.active=mysql,mq 或 h2,mq）
 pay:
   mq:
-    enabled: true
+    enabled: ${PAY_MQ_ENABLED:true}
     name-server: 127.0.0.1:9877
     producer-group: pay-settle-producer
+    clearance-via-mq: ${PAY_MQ_CLEARANCE:true}
+    outbox-via-mq: ${PAY_MQ_OUTBOX:true}
+    payment-callback-via-mq: true
+    consumer:
+      # 与 30 TPS 限流对齐
+      access-thread-max: 6
+      calc-thread-max: 10
+      settlement-thread-max: 6
+      settlement-payment-thread-max: 2
+      consume-timeout-minutes: 15
+      pull-batch-size: 32
+      roles: all
+    backlog:
+      check-interval-ms: 60000
+      lag-warn: 1000
+      lag-critical: 10000
+      outbox-pending-warn: 1000
+      outbox-pending-critical: 5000
+      clearance-pending-warn: 500
+      circuit-enabled: true
+    dlq:
+      inspect-cron: "0 */10 * * * ?"
+  outbox:
+    dispatch-interval-ms: 1000
+    dispatch-batch-size: 300
+  compensate:
+    outbox-interval-ms: 600000
+  db-rate-limit:
+    enabled: true
+    access-tps: 30
+    calc-tps: 30
+    settlement-tps: 30
+
+spring:
+  datasource:
+    hikari:
+      # sharding profile 会覆盖；此处与分片模式对齐，避免 mq profile 单独把 timeout 压到 3s
+      pool-name: mq-profile-fallback
+      maximum-pool-size: 20
+      minimum-idle: 4
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
 
 rocketmq:
   name-server: 127.0.0.1:9877
@@ -11,3 +55,14 @@ rocketmq:
     group: pay-settle-producer
     send-message-timeout: 10000
     retry-times-when-send-failed: 2
+  consumer:
+    pull-batch-size: 32
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true

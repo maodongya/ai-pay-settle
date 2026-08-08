@@ -1,0 +1,37 @@
+# MySQL 8 本地开发/压测（与 pay-settle 分库分表对齐）
+# 启动: ./docs/docker/mysql/init-mysql-docker.sh
+# 或:   docker compose -f docs/docker/mysql/docker-compose.yml up -d
+#
+# 数据目录默认复用本机已有路径，避免重建丢数据。
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql8
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      TZ: Asia/Shanghai
+    volumes:
+      - ${MYSQL_DATA_DIR:-/Users/maodongya/docker/mysql/data}:/var/lib/mysql
+      - ${MYSQL_CONF_DIR:-/Users/maodongya/docker/mysql/conf}:/etc/mysql/conf.d
+      - ./my.cnf:/etc/mysql/conf.d/99-pay-settle.cnf:ro
+    command:
+      - mysqld
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s

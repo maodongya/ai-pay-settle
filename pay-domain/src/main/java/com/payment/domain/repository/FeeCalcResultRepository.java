@@ -9,7 +9,9 @@ import java.util.Optional;
  */
 public interface FeeCalcResultRepository {
 
+    /** 保存或更新费用计算结果 */
     FeeCalcResultEntity save(FeeCalcResultEntity entity);
 
+    /** 按账单号查询费用计算结果 */
     Optional<FeeCalcResultEntity> findByBillNo(String billNo);
 }

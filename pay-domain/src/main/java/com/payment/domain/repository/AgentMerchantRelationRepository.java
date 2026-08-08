@@ -9,5 +9,6 @@ import java.util.Optional;
  */
 public interface AgentMerchantRelationRepository {
 
+    /** 按商户 ID 查询最新代理商关系 */
     Optional<AgentMerchantRelationEntity> findFirstByMerchantIdOrderByRelIdDesc(Long merchantId);
 }

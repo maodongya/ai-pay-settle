@@ -8,7 +8,11 @@ import com.payment.domain.support.MapperHelper;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
+/**
+ * {@link WithdrawApplyRepository} 的 MyBatis-Plus 实现。
+ */
 @Repository
 public class WithdrawApplyRepositoryImpl implements WithdrawApplyRepository {
 
@@ -26,5 +30,18 @@ public class WithdrawApplyRepositoryImpl implements WithdrawApplyRepository {
     @Override
     public List<WithdrawApplyEntity> findAll() {
         return withdrawApplyMapper.selectList(new QueryWrapper<>());
+    }
+
+    @Override
+    public Optional<WithdrawApplyEntity> findBySettleNoAndMerchantId(String settleNo, Long merchantId) {
+        return Optional.ofNullable(withdrawApplyMapper.selectOne(new QueryWrapper<WithdrawApplyEntity>()
+                .eq("settle_no", settleNo)
+                .eq("merchant_id", merchantId)
+                .last("LIMIT 1")));
+    }
+
+    @Override
+    public int updateStatusBySettleNoAndMerchantId(String settleNo, Long merchantId, Integer status) {
+        return withdrawApplyMapper.updateStatusBySettleNoAndMerchantId(settleNo, merchantId, status);
     }
 }

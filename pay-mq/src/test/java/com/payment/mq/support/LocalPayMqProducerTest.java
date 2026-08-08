@@ -2,6 +2,7 @@ package com.payment.mq.support;
 
 import com.payment.mq.MqMessageHandler;
 import com.payment.mq.MqTopics;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -29,11 +30,73 @@ class LocalPayMqProducerTest {
             }
         };
         LocalMqHandlerRegistry registry = new LocalMqHandlerRegistry(fixedProvider(List.of(handler)));
-        LocalPayMqProducer producer = new LocalPayMqProducer(registry);
+        LocalPayMqProducer producer = new LocalPayMqProducer(registry, new PayMqProduceMetrics(fixedMeterRegistryProvider()));
 
         producer.send(MqTopics.SETTLE_AMOUNT, "{\"billNo\":\"CL001\"}");
 
         assertEquals(1, counter.get());
+    }
+
+    @Test
+    void shouldSerializeOrderlyByHashKey() {
+        AtomicInteger concurrent = new AtomicInteger();
+        MqMessageHandler handler = new MqMessageHandler() {
+            @Override
+            public String topic() {
+                return MqTopics.SETTLE_AMOUNT;
+            }
+
+            @Override
+            public void handle(String payload) {
+                concurrent.incrementAndGet();
+            }
+        };
+        LocalMqHandlerRegistry registry = new LocalMqHandlerRegistry(fixedProvider(List.of(handler)));
+        LocalPayMqProducer producer = new LocalPayMqProducer(registry, new PayMqProduceMetrics(fixedMeterRegistryProvider()));
+
+        producer.sendOrderly(MqTopics.SETTLE_AMOUNT, null, "m1", "{\"a\":1}");
+        producer.sendOrderly(MqTopics.SETTLE_AMOUNT, null, "m1", "{\"a\":2}");
+
+        assertEquals(2, concurrent.get());
+    }
+
+    private static ObjectProvider<MeterRegistry> fixedMeterRegistryProvider() {
+        return new ObjectProvider<>() {
+            @Override
+            public MeterRegistry getObject() {
+                return null;
+            }
+
+            @Override
+            public MeterRegistry getObject(Object... args) {
+                return null;
+            }
+
+            @Override
+            public MeterRegistry getIfAvailable() {
+                return null;
+            }
+
+            @Override
+            public MeterRegistry getIfUnique() {
+                return null;
+            }
+
+            @Override
+            public MeterRegistry getIfAvailable(Supplier<MeterRegistry> defaultSupplier) {
+                return null;
+            }
+
+            @Override
+            public Stream<MeterRegistry> stream() {
+                return Stream.empty();
+            }
+
+            @Override
+            public Stream<MeterRegistry> orderedStream() {
+                return Stream.empty();
+            }
+        };
     }
 
     private static ObjectProvider<List<MqMessageHandler>> fixedProvider(List<MqMessageHandler> handlers) {
