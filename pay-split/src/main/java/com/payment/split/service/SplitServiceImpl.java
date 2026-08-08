@@ -1,6 +1,5 @@
 package com.payment.split.service; // 分账服务包
 
-import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.fasterxml.jackson.core.JsonProcessingException; // JSON 处理异常
 import com.fasterxml.jackson.databind.ObjectMapper; // JSON 对象映射器
 import com.payment.api.dto.AgentRelationDTO; // 代理关系 DTO
@@ -56,9 +55,9 @@ public class SplitServiceImpl implements SplitService {
 
     /**
      * 根据费用计算结果生成分账明细及相关凭证。
+     * 不开启独立事务：由 ClearanceTaskTxSupport / SplitCompensateSupport 持有短事务。
      */
     @Override
-    @DSTransactional
     public void generateSplitDetail(FeeCalcResultDTO calcResult, AgentRelationDTO relation) {
         if (splitDetailRepository.existsByBillNo(calcResult.billNo)) {
             ensureOutboxIfNeeded(calcResult);
