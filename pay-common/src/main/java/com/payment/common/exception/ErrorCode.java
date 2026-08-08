@@ -17,6 +17,8 @@ public enum ErrorCode {
     BELOW_MIN_WITHDRAW(30002, "below minimum withdraw amount"), // 低于最低提现金额
     DUPLICATE_WITHDRAW(30003, "duplicate withdraw apply"), // 重复提现申请
     CONCURRENT_UPDATE(30005, "concurrent account update conflict"), // 账户并发更新冲突
+    REDIS_LOCK_UNAVAILABLE(30016, "redis lock unavailable"),
+    RATE_LIMITED(42901, "rate limited"),
     PAYMENT_IN_PROGRESS(30015, "payment in progress"), // 打款进行中
     PAYMENT_CHANNEL_TIMEOUT(40001, "payment channel timeout"), // 支付渠道超时
     PAYMENT_FAILED(40002, "payment failed"); // 支付失败

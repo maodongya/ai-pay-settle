@@ -3,7 +3,7 @@ package com.payment.common.ratelimit;
 import java.util.concurrent.locks.LockSupport;
 
 /**
- * 单层 TPS 限流器（全局串行令牌，阻塞 acquire）。
+ * 单层 TPS 限流器：阻塞 acquire 或非阻塞 tryAcquire。
  */
 final class LayerTpsRateLimiter {
 
@@ -30,6 +30,17 @@ final class LayerTpsRateLimiter {
         }
         if (waitNanos > 0) {
             LockSupport.parkNanos(waitNanos);
+        }
+    }
+
+    boolean tryAcquire() {
+        synchronized (this) {
+            long now = System.nanoTime();
+            if (now < nextPermitNanos) {
+                return false;
+            }
+            nextPermitNanos = now + intervalNanos;
+            return true;
         }
     }
 }

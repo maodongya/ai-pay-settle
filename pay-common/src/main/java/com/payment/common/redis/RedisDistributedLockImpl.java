@@ -4,6 +4,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -32,6 +33,9 @@ public class RedisDistributedLockImpl implements RedisDistributedLock {
 
     @Override
     public String tryLock(String key, Duration ttl) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("redis lock forbidden inside DB transaction, key=" + key);
+        }
         String token = UUID.randomUUID().toString();
         Boolean ok = stringRedisTemplate.opsForValue().setIfAbsent(key, token, ttl);
         return Boolean.TRUE.equals(ok) ? token : null;

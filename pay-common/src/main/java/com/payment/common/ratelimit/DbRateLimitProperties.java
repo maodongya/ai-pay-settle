@@ -4,21 +4,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * 各层 DB 入口限流配置。
+ * 注意：当前为单 JVM 限流，集群近似上限 ≈ 配置 TPS × 实例数。
  */
 @ConfigurationProperties(prefix = "pay.db-rate-limit")
 public class DbRateLimitProperties {
 
-    /** 是否启用限流 */
     private boolean enabled = true;
-
-    /** 接入层 TPS 上限 */
     private double accessTps = 30;
-
-    /** 清算层 TPS 上限 */
     private double calcTps = 30;
-
-    /** 结算层 TPS 上限 */
     private double settlementTps = 30;
+    /** block=阻塞等待；reject=立即抛 RATE_LIMITED */
+    private String mode = "block";
 
     public boolean isEnabled() {
         return enabled;
@@ -50,6 +46,14 @@ public class DbRateLimitProperties {
 
     public void setSettlementTps(double settlementTps) {
         this.settlementTps = settlementTps;
+    }
+
+    public String getMode() {
+        return mode;
+    }
+
+    public void setMode(String mode) {
+        this.mode = mode;
     }
 
     double resolveTps(DbRateLimitLayer layer, double annotationTps) {

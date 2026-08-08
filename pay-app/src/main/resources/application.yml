@@ -41,6 +41,8 @@ mybatis-plus:
 payment:
   redis:
     enabled: true
+    lock:
+      fail-closed: true
 
 pay:
   db:
@@ -48,6 +50,12 @@ pay:
       enabled: true
   shard:
     enabled: false
+  db-rate-limit:
+    enabled: true
+    access-tps: 10
+    calc-tps: 10
+    settlement-tps: 10
+    mode: block
   mq:
     enabled: false
     name-server: 127.0.0.1:9876
