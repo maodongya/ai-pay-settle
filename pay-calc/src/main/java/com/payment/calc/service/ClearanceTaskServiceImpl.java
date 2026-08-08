@@ -154,13 +154,15 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     }
 
     /**
-     * 解析 merchantId：MQ 载荷 → clearance_task → bill_route。
+     * 解析 merchantId：MQ 载荷 → clearance_task（尽量少依赖 bill_route）→ bill_route。
      * 接入同事务内 bill_route 可能尚未对 config 数据源可见，故优先用任务表。
      */
     private Long resolveMerchantId(String billNo, Long merchantIdHint) {
         if (merchantIdHint != null) {
             return merchantIdHint;
         }
+        log.warn("clearance merchantId missing in payload, fallback resolve billNo={}", billNo);
+        // findByBillNo 在有路由时补 merchant_id；无路由时仅按 bill_no（分片环境可能不准）
         Optional<ClearanceTaskEntity> task = clearanceTaskRepository.findByBillNo(billNo);
         if (task.isPresent() && task.get().merchantId != null) {
             return task.get().merchantId;
