@@ -12,6 +12,8 @@ import com.payment.common.shard.ShardRouter;
 import com.payment.common.metrics.PayBusinessMetrics; // 业务吞吐指标
 import com.payment.common.ratelimit.DbRateLimit;
 import com.payment.common.ratelimit.DbRateLimitLayer;
+import com.payment.control.service.AlertService;
+import com.payment.control.service.ExceptionRecordService;
 import com.payment.domain.entity.ClearanceTaskEntity; // 清算任务实体
 import com.payment.domain.entity.TradeBillEntity; // 交易账单实体
 import com.payment.domain.repository.ClearanceTaskRepository; // 清算任务仓储
@@ -45,6 +47,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     private final PayBusinessMetrics businessMetrics; // 业务吞吐指标
     private final ClearanceTaskTxSupport clearanceTaskTxSupport; // 分阶段事务
     private final ClearanceTaskMetrics clearanceTaskMetrics; // calc 监控
+    private final ExceptionRecordService exceptionRecordService;
+    private final AlertService alertService;
 
     /**
      * 构造注入依赖。
@@ -57,7 +61,9 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
                                     ClearanceTaskPublisher clearanceTaskPublisher,
                                     PayBusinessMetrics businessMetrics,
                                     ClearanceTaskTxSupport clearanceTaskTxSupport,
-                                    ClearanceTaskMetrics clearanceTaskMetrics) {
+                                    ClearanceTaskMetrics clearanceTaskMetrics,
+                                    ExceptionRecordService exceptionRecordService,
+                                    AlertService alertService) {
         this.clearanceTaskRepository = clearanceTaskRepository; // 赋值任务仓储
         this.tradeBillRepository = tradeBillRepository; // 赋值账单仓储
         this.shardRouteService = shardRouteService; // 赋值路由服务
@@ -67,6 +73,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
         this.businessMetrics = businessMetrics; // 赋值指标
         this.clearanceTaskTxSupport = clearanceTaskTxSupport; // 赋值分阶段事务
         this.clearanceTaskMetrics = clearanceTaskMetrics; // 赋值 calc 指标
+        this.exceptionRecordService = exceptionRecordService;
+        this.alertService = alertService;
     }
 
     /**
@@ -136,7 +144,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
             } catch (Exception e) { // 可重试业务失败
                 log.error("clearance failed billNo={}", billNo, e); // 错误日志
                 long failStart = clearanceTaskMetrics.nanoTime(); // 失败处理起点
-                clearanceTaskTxSupport.markFailure(claimCtx, e); // 标 FAILED/DEAD
+                ClearanceFailureOutcome failure = clearanceTaskTxSupport.markFailure(claimCtx, e);
+                notifyIfEnteredDead(failure);
                 clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FAIL, failStart); // 记录 fail 耗时
             }
         } finally { // 无论成败记录整单耗时
@@ -197,6 +206,21 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
         if (status == TaskStatus.RUNNING.getCode()) {
             return;
         }
+    }
+
+    @Override
+    public void watchdogFailAndNotify(String billNo, Long merchantId) {
+        ClearanceFailureOutcome outcome = clearanceTaskTxSupport.watchdogFail(billNo, merchantId);
+        notifyIfEnteredDead(outcome);
+    }
+
+    private void notifyIfEnteredDead(ClearanceFailureOutcome outcome) {
+        if (outcome == null || !outcome.enteredDead()) {
+            return;
+        }
+        exceptionRecordService.openClearanceDead(outcome.billNo(), outcome.errorMsg());
+        alertService.send(AlertService.CLEARANCE_DEAD,
+                "billNo=" + outcome.billNo() + " err=" + outcome.errorMsg());
     }
 
     /**

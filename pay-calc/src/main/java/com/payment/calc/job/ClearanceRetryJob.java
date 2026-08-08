@@ -60,10 +60,8 @@ public class ClearanceRetryJob {
         ShardScanSupport.forEachShard(shardId -> stale.addAll(
                 clearanceTaskRepository.findByStatusAndShardIdAndUpdateTimeBefore(
                         TaskStatus.RUNNING.getCode(), shardId, threshold, WATCHDOG_BATCH_PER_SHARD)));
-        for (ClearanceTaskEntity task : stale) { // 逐个处理
-            task.status = TaskStatus.FAILED.getCode(); // 标记失败
-            task.errorMsg = "watchdog timeout";
-            clearanceTaskRepository.save(task); // 保存任务
+        for (ClearanceTaskEntity task : stale) {
+            clearanceTaskService.watchdogFailAndNotify(task.billNo, task.merchantId);
         }
     }
 }

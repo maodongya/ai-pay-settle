@@ -30,4 +30,9 @@ public interface ClearanceTaskService {
      * @param limit 最大重试数量
      */
     void retryFailedTasks(int limit);
+
+    /**
+     * Watchdog：将超时 RUNNING 任务与 CLEARING 账单同事务失败化，DEAD 时事务外开单告警。
+     */
+    void watchdogFailAndNotify(String billNo, Long merchantId);
 }
