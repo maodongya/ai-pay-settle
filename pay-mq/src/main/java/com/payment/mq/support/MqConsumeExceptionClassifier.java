@@ -64,8 +64,10 @@ public class MqConsumeExceptionClassifier {
         }
         if (code == ErrorCode.INVALID_PARAM.getCode() // 10002 参数非法
                 || code == ErrorCode.MERCHANT_INVALID.getCode() // 10003 商户冻结/不存在
-                || code == ErrorCode.RULE_NOT_MATCHED.getCode()) { // 20001 规则缺失
-            return MqConsumeAction.ACK; // 永久性数据问题，重试无意义
+                || code == ErrorCode.RULE_NOT_MATCHED.getCode() // 20001 规则缺失
+                || code == ErrorCode.RATE_LIMITED.getCode() // 42901 限流拒绝：ACK，避免 MQ 放大重试
+                || code == ErrorCode.REDIS_LOCK_UNAVAILABLE.getCode()) { // 30016 锁不可用：ACK，由上游重投/人工
+            return MqConsumeAction.ACK; // 永久性或保护性拒绝，重试无意义/有害
         }
         if (code == ErrorCode.CONCURRENT_UPDATE.getCode()) { // 30005 乐观锁冲突
             return MqConsumeAction.RETRY; // 瞬态并发，可 MQ 重试

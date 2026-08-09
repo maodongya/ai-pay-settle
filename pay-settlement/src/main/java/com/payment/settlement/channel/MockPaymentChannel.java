@@ -53,12 +53,24 @@ public class MockPaymentChannel {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        PaymentCallbackDTO callback = buildSuccessCallback(settleNo);
+        log.info("mock payment success settleNo={} amount={}", settleNo, amount);
+        deliverCallback(callback);
+    }
+
+    /**
+     * R2：查单。Mock 渠道对未知单也返回 SUCCESS（便于 PAYING 补偿收敛）。
+     */
+    public PaymentCallbackDTO queryStatus(String settleNo) {
+        return buildSuccessCallback(settleNo);
+    }
+
+    private static PaymentCallbackDTO buildSuccessCallback(String settleNo) {
         PaymentCallbackDTO callback = new PaymentCallbackDTO();
         callback.settleNo = settleNo;
         callback.channelTradeNo = "BK" + UUID.randomUUID().toString().substring(0, 12);
         callback.status = "SUCCESS";
-        log.info("mock payment success settleNo={} amount={}", settleNo, amount);
-        deliverCallback(callback);
+        return callback;
     }
 
     private void deliverCallback(PaymentCallbackDTO callback) {

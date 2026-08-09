@@ -25,7 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * P0-3 验收：PENDING 无任务补建；已有 PENDING 任务 MQ 重发；终态任务不触发。
+ * P0-3 / R6：缺任务补建并触发；默认不反复 republish 已有 PENDING 任务。
  */
 @ExtendWith(MockitoExtension.class)
 class ClearanceTaskCompensateP0AcceptanceTest {
@@ -37,8 +37,8 @@ class ClearanceTaskCompensateP0AcceptanceTest {
     @Mock PayMqProperties payMqProperties;
 
     @Test
-    void missingTask_createdAndRepublishedViaMq() {
-        ClearanceTaskCompensateJob job = newJob();
+    void missingTask_createdAndTriggeredViaMq() {
+        ClearanceTaskCompensateJob job = newJob(false);
         TradeBillEntity bill = bill("B-MISS", 10001L);
         when(tradeBillRepository.findByStatusAndShardId(eq(BillStatus.PENDING.getCode()), anyInt(), eq(100)))
                 .thenAnswer(inv -> ((Integer) inv.getArgument(1)) == 0 ? List.of(bill) : List.of());
@@ -56,8 +56,25 @@ class ClearanceTaskCompensateP0AcceptanceTest {
     }
 
     @Test
-    void existingPendingTask_republishOnly_noDuplicateCreate() {
-        ClearanceTaskCompensateJob job = newJob();
+    void existingPendingTask_notRepublished_byDefault() {
+        ClearanceTaskCompensateJob job = newJob(false);
+        TradeBillEntity bill = bill("B-EXIST", 10002L);
+        when(tradeBillRepository.findByStatusAndShardId(eq(BillStatus.PENDING.getCode()), anyInt(), eq(100)))
+                .thenAnswer(inv -> ((Integer) inv.getArgument(1)) == 0 ? List.of(bill) : List.of());
+        when(clearanceTaskRepository.findByBillNoAndMerchantId("B-EXIST", 10002L))
+                .thenReturn(Optional.of(task(TaskStatus.PENDING.getCode())));
+
+        job.compensateMissingTasks();
+
+        verify(clearanceTaskService, never()).createTask(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(clearanceTaskPublisher, never()).publish(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void existingPendingTask_republished_whenFlagOn() {
+        ClearanceTaskCompensateJob job = newJob(true);
         TradeBillEntity bill = bill("B-EXIST", 10002L);
         when(tradeBillRepository.findByStatusAndShardId(eq(BillStatus.PENDING.getCode()), anyInt(), eq(100)))
                 .thenAnswer(inv -> ((Integer) inv.getArgument(1)) == 0 ? List.of(bill) : List.of());
@@ -67,14 +84,12 @@ class ClearanceTaskCompensateP0AcceptanceTest {
 
         job.compensateMissingTasks();
 
-        verify(clearanceTaskService, never()).createTask(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
         verify(clearanceTaskPublisher, times(1)).publish("B-EXIST", 10002L);
     }
 
     @Test
     void runningTask_notRepublished() {
-        ClearanceTaskCompensateJob job = newJob();
+        ClearanceTaskCompensateJob job = newJob(true);
         TradeBillEntity bill = bill("B-RUN", 10003L);
         when(tradeBillRepository.findByStatusAndShardId(eq(BillStatus.PENDING.getCode()), anyInt(), eq(100)))
                 .thenAnswer(inv -> ((Integer) inv.getArgument(1)) == 0 ? List.of(bill) : List.of());
@@ -89,10 +104,10 @@ class ClearanceTaskCompensateP0AcceptanceTest {
                 org.mockito.ArgumentMatchers.any());
     }
 
-    private ClearanceTaskCompensateJob newJob() {
+    private ClearanceTaskCompensateJob newJob(boolean republishPending) {
         return new ClearanceTaskCompensateJob(
                 tradeBillRepository, clearanceTaskRepository, clearanceTaskService,
-                clearanceTaskPublisher, payMqProperties, false);
+                clearanceTaskPublisher, payMqProperties, false, republishPending);
     }
 
     private static TradeBillEntity bill(String billNo, Long merchantId) {

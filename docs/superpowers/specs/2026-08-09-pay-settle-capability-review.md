@@ -264,4 +264,22 @@
 
 ---
 
-*文档版本：2026-08-09 · 全量重梳 · 待用户审阅*
+## 12. 落地记录（2026-08-09 follow-up）
+
+相对本文件初版风险表，已在代码/文档中处理：
+
+| ID | 状态 | 说明 |
+|----|------|------|
+| R1 | ✅ | T+1 `originSettleNo=batchNo:merchantId` |
+| R2 | ✅ | `PaymentStatusQueryJob` + `MockPaymentChannel.queryStatus` |
+| R6 | ✅ | Compensate 默认不 republish 已有 PENDING；开关 `pay.compensate.republish-pending-tasks` |
+| R8 | ✅ | fail/watchdog 校验 bill CAS，miss 打 warn |
+| R11 | ✅ | `RATE_LIMITED` / `REDIS_LOCK_UNAVAILABLE` → MQ ACK |
+| R16 | ✅ 部分 | 对齐 `00/01/05/08`、access README、监控方案关键漂移 |
+| R3/R4/R7/R9… | ⬜ | 告警外发、真 DLQ、弱路由、完整校验等仍开放 |
+
+实现计划：`docs/superpowers/plans/2026-08-09-capability-review-followup.md`
+
+---
+
+*文档版本：2026-08-09 · 全量重梳 · follow-up 部分落地*

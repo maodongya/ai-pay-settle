@@ -36,7 +36,7 @@ class ClearanceTaskCompensateJobTest {
     void createsTask_whenPendingBillHasNoTask_andTriggersSyncExecute() {
         ClearanceTaskCompensateJob job = new ClearanceTaskCompensateJob(
                 tradeBillRepository, clearanceTaskRepository, clearanceTaskService,
-                clearanceTaskPublisher, payMqProperties, false);
+                clearanceTaskPublisher, payMqProperties, false, false);
 
         TradeBillEntity bill = new TradeBillEntity();
         bill.billNo = "B1";

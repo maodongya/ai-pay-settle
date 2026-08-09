@@ -29,7 +29,12 @@ sequenceDiagram
 | 结算 API | `/api/v1/settlement/**` |
 | DLQ 重放 | `/api/v1/console/dlq/replay` |
 
-补偿：`BillRouteCompensateJob` 补写缺失路由。
+补偿：
+
+| Job | 职责 |
+|-----|------|
+| `ClearanceTaskCompensateJob` | PENDING 账单缺 `clearance_task` 时补建并触发；默认不对已有 PENDING 任务反复 republish（`pay.compensate.republish-pending-tasks`） |
+| `BillRouteCompensateJob` | 补写缺失 `bill_route` |
 
 ## 核心内容
 
@@ -38,6 +43,7 @@ sequenceDiagram
 | `BillAccessServiceImpl` | 接入主流程 |
 | `ClearanceController` / `SettlementController` | HTTP |
 | `TradePayConsumer` / `TradeRefundConsumer` | MQ |
+| `ClearanceTaskCompensateJob` | 缺任务补偿（P0-3 / R6） |
 | `BillRouteCompensateJob` | 路由补偿 |
 | `DlqReplayService` | DLQ 重放 |
 

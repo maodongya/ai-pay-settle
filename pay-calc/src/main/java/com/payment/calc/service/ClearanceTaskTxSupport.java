@@ -12,6 +12,8 @@ import com.payment.common.enums.TaskStatus;
 import com.payment.domain.entity.TradeBillEntity;
 import com.payment.domain.repository.ClearanceTaskRepository;
 import com.payment.domain.repository.TradeBillRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -24,6 +26,7 @@ import java.util.Optional;
 @Component
 public class ClearanceTaskTxSupport {
 
+    private static final Logger log = LoggerFactory.getLogger(ClearanceTaskTxSupport.class);
     private static final int MAX_RETRY = 5;
     private static final int ERROR_MSG_MAX = 500;
 
@@ -143,6 +146,7 @@ public class ClearanceTaskTxSupport {
 
     /**
      * C3：不再为取 retryCount 而 find 整行；markFailed SQL 原子 +1；enteredDead 仅在 updated 后轻量查 status。
+     * R8：bill CAS 更新行数为 0 时打告警（task 已终态、bill 可能非 CLEARING）。
      */
     private ClearanceFailureOutcome failRunningTask(String billNo, Long merchantId, String rawError) {
         String errorMsg = truncateError(rawError);
@@ -157,8 +161,12 @@ public class ClearanceTaskTxSupport {
         boolean enteredDead = clearanceTaskRepository.findStatusByBillNoAndMerchantId(billNo, merchantId)
                 .map(status -> status == TaskStatus.DEAD.getCode())
                 .orElse(false);
-        tradeBillRepository.updateStatusByBillNoAndMerchantId(
+        int billUpdated = tradeBillRepository.updateStatusByBillNoAndMerchantId(
                 billNo, merchantId, BillStatus.CLEARING.getCode(), BillStatus.FAILED.getCode());
+        if (billUpdated == 0) {
+            log.warn("fail bill status mismatch billNo={} merchantId={} (task marked, bill not CLEARING)",
+                    billNo, merchantId);
+        }
         return new ClearanceFailureOutcome(billNo, errorMsg, enteredDead, true);
     }
 

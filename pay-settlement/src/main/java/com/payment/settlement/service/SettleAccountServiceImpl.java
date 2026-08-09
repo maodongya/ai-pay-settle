@@ -130,29 +130,33 @@ public class SettleAccountServiceImpl implements SettleAccountService {
     @Override
     public void runT1Batch(LocalDate batchDate) {
         String batchNo = "BATCH-T1-" + batchDate;
-        if (settlementOrderRepository.existsByOriginSettleNo(batchNo)) {
-            log.info("T1 batch already ran batchNo={}", batchNo);
-            return;
-        }
+        // R1：不再用「整批 originSettleNo=batchNo」短路；按商户粒度幂等（batchNo:merchantId）
 
         List<MerchantSettleAccountEntity> accounts = accountRepository
                 .findBySettleModeAndWaitBalanceGreaterThanEqualOrderByMerchantIdAsc(
                         SettleMode.T1.getCode(), BigDecimal.ONE);
 
         int processed = 0;
+        int skipped = 0;
         for (MerchantSettleAccountEntity account : accounts) {
             try {
                 if (processOneT1(account, batchNo)) {
                     processed++;
+                } else {
+                    skipped++;
                 }
             } catch (Exception e) {
                 log.warn("T1 batch failed merchantId={} batchNo={}", account.merchantId, batchNo, e);
             }
         }
-        log.info("T1 batch finished batchNo={} processed={}", batchNo, processed);
+        log.info("T1 batch finished batchNo={} processed={} skipped={}", batchNo, processed, skipped);
     }
 
     private boolean processOneT1(MerchantSettleAccountEntity account, String batchNo) {
+        String merchantOrigin = batchNo + ":" + account.merchantId;
+        if (settlementOrderRepository.existsByOriginSettleNo(merchantOrigin)) {
+            return false; // 本商户本批次已生成过结算单
+        }
         BigDecimal minSettle = contractRepository.findByMerchantId(account.merchantId)
                 .map(c -> c.minWithdraw)
                 .orElse(new BigDecimal("1.00"));
@@ -166,7 +170,7 @@ public class SettleAccountServiceImpl implements SettleAccountService {
             return false;
         }
         BigDecimal amount = account.waitBalance;
-        settleAccountTxSupport.processOneT1Local(account, batchNo, seqGenerator.settleNo(), amount);
+        settleAccountTxSupport.processOneT1Local(account, merchantOrigin, seqGenerator.settleNo(), amount);
         return true;
     }
 

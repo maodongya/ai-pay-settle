@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 接入补偿：PENDING 账单缺少 clearance_task 时补建任务并触发清算。
+ * R6：默认仅对「新补建」的任务触发；已有 PENDING 任务不反复 republish（可用开关打开旧行为）。
  */
 @Component
 public class ClearanceTaskCompensateJob {
@@ -30,19 +31,23 @@ public class ClearanceTaskCompensateJob {
     private final ClearanceTaskPublisher clearanceTaskPublisher;
     private final PayMqProperties payMqProperties;
     private final boolean pauseJobs;
+    /** true=对已有 PENDING 任务也 republish（易放大 MQ）；默认 false */
+    private final boolean republishPendingTasks;
 
     public ClearanceTaskCompensateJob(TradeBillRepository tradeBillRepository,
                                       ClearanceTaskRepository clearanceTaskRepository,
                                       ClearanceTaskService clearanceTaskService,
                                       ClearanceTaskPublisher clearanceTaskPublisher,
                                       PayMqProperties payMqProperties,
-                                      @Value("${pay.loadtest.pause-jobs:false}") boolean pauseJobs) {
+                                      @Value("${pay.loadtest.pause-jobs:false}") boolean pauseJobs,
+                                      @Value("${pay.compensate.republish-pending-tasks:false}") boolean republishPendingTasks) {
         this.tradeBillRepository = tradeBillRepository;
         this.clearanceTaskRepository = clearanceTaskRepository;
         this.clearanceTaskService = clearanceTaskService;
         this.clearanceTaskPublisher = clearanceTaskPublisher;
         this.payMqProperties = payMqProperties;
         this.pauseJobs = pauseJobs;
+        this.republishPendingTasks = republishPendingTasks;
     }
 
     @Scheduled(fixedDelayString = "${pay.compensate.clearance-task-interval-ms:60000}")
@@ -51,7 +56,7 @@ public class ClearanceTaskCompensateJob {
             return;
         }
         int created = 0;
-        int republished = 0;
+        int triggered = 0;
         for (int shardId = 0; shardId < ShardConstants.SHARD_COUNT; shardId++) {
             for (TradeBillEntity bill : tradeBillRepository.findByStatusAndShardId(
                     BillStatus.PENDING.getCode(), shardId, SCAN_PER_SHARD)) {
@@ -69,16 +74,22 @@ public class ClearanceTaskCompensateJob {
                 if (taskOpt.get().status != TaskStatus.PENDING.getCode()) {
                     continue;
                 }
+                // 默认只触发新补建；已有 PENDING 任务依赖原 MQ/重试，避免每分钟风暴
+                if (existed && !republishPendingTasks) {
+                    continue;
+                }
                 if (payMqProperties.isClearanceViaMq()) {
                     clearanceTaskPublisher.publish(bill.billNo, bill.merchantId);
-                    republished++;
+                    triggered++;
                 } else if (!existed) {
                     clearanceTaskService.executeTask(bill.billNo, bill.merchantId);
+                    triggered++;
                 }
             }
         }
-        if (created > 0 || republished > 0) {
-            log.info("clearance_task compensated created={} republished={}", created, republished);
+        if (created > 0 || triggered > 0) {
+            log.info("clearance_task compensated created={} triggered={} republishPending={}",
+                    created, triggered, republishPendingTasks);
         }
     }
 }

@@ -68,6 +68,23 @@ class ClearanceWatchdogP0AcceptanceTest {
     }
 
     @Test
+    void watchdog_stillUpdated_whenBillCasMisses_butLogsMismatch() {
+        when(clearanceTaskRepository.markFailed(any(), any(), any(), any(), any(),
+                anyInt(), any(), any())).thenReturn(1);
+        when(clearanceTaskRepository.findStatusByBillNoAndMerchantId("B1b", 10001L))
+                .thenReturn(Optional.of(TaskStatus.FAILED.getCode()));
+        when(tradeBillRepository.updateStatusByBillNoAndMerchantId(
+                "B1b", 10001L, BillStatus.CLEARING.getCode(), BillStatus.FAILED.getCode()))
+                .thenReturn(0);
+
+        ClearanceFailureOutcome out = txSupport.watchdogFail("B1b", 10001L);
+
+        assertTrue(out.updated());
+        verify(tradeBillRepository).updateStatusByBillNoAndMerchantId(
+                "B1b", 10001L, BillStatus.CLEARING.getCode(), BillStatus.FAILED.getCode());
+    }
+
+    @Test
     void watchdog_doesNotTouchBill_whenTaskAlreadyLeftRunning() {
         when(clearanceTaskRepository.markFailed(any(), any(), any(), any(), any(),
                 anyInt(), any(), any())).thenReturn(0);

@@ -174,7 +174,7 @@ public class SettleAccountTxSupport {
     }
 
     @Transactional
-    public void processOneT1Local(MerchantSettleAccountEntity account, String batchNo,
+    public void processOneT1Local(MerchantSettleAccountEntity account, String originSettleNo,
                                   String settleNo, BigDecimal amount) {
         accountOperator.freeze(account.merchantId, settleNo, amount);
         SettlementOrderEntity order = new SettlementOrderEntity();
@@ -184,7 +184,7 @@ public class SettleAccountTxSupport {
         order.settleMode = SettleMode.T1.getCode();
         order.settleCardNo = account.settleCardNo;
         order.status = SettleOrderStatus.PAYING.getCode();
-        order.originSettleNo = batchNo;
+        order.originSettleNo = originSettleNo; // 建议 batchNo:merchantId，避免整批短路
         order.createTime = LocalDateTime.now();
         order.updateTime = LocalDateTime.now();
         settlementOrderRepository.save(order);
