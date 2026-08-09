@@ -42,9 +42,9 @@ public interface ClearanceTaskRepository {
     /** 标记任务成功 */
     int markSuccess(String billNo, Long merchantId, Integer expectedStatus, Integer newStatus, LocalDateTime now);
 
-    /** 标记任务失败并安排重试 */
+    /** 标记任务失败并安排重试（SQL 内原子 +1 retry 与退避时间） */
     int markFailed(String billNo, Long merchantId, Integer expectedStatus, Integer failedStatus,
-                   Integer deadStatus, int maxRetry, String errorMsg, LocalDateTime nextRetryTime, LocalDateTime now);
+                   Integer deadStatus, int maxRetry, String errorMsg, LocalDateTime now);
 
     /** 强制置为死信状态 */
     int markDead(String billNo, Long merchantId, Integer newStatus, String errorMsg, LocalDateTime now);

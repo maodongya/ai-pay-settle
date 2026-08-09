@@ -4,7 +4,6 @@ import com.payment.api.service.FeeCalcService;
 import com.payment.api.service.SplitService;
 import com.payment.common.enums.BillStatus;
 import com.payment.common.enums.TaskStatus;
-import com.payment.domain.entity.ClearanceTaskEntity;
 import com.payment.domain.repository.ClearanceTaskRepository;
 import com.payment.domain.repository.TradeBillRepository;
 import org.junit.jupiter.api.Test;
@@ -36,15 +35,13 @@ class ClearanceTaskTxSupportWatchdogTest {
 
     @Test
     void watchdogFail_updatesTaskAndBill_whenRunning() {
-        ClearanceTaskEntity task = new ClearanceTaskEntity();
-        task.retryCount = 0;
-        when(clearanceTaskRepository.findByBillNoAndMerchantId("B1", 10001L))
-                .thenReturn(Optional.of(task));
         when(clearanceTaskRepository.markFailed(
                 eq("B1"), eq(10001L), eq(TaskStatus.RUNNING.getCode()),
                 eq(TaskStatus.FAILED.getCode()), eq(TaskStatus.DEAD.getCode()),
-                anyInt(), eq("watchdog timeout"), any(LocalDateTime.class), any(LocalDateTime.class)))
+                anyInt(), eq("watchdog timeout"), any(LocalDateTime.class)))
                 .thenReturn(1);
+        when(clearanceTaskRepository.findStatusByBillNoAndMerchantId("B1", 10001L))
+                .thenReturn(Optional.of(TaskStatus.FAILED.getCode()));
         when(tradeBillRepository.updateStatusByBillNoAndMerchantId(
                 "B1", 10001L, BillStatus.CLEARING.getCode(), BillStatus.FAILED.getCode()))
                 .thenReturn(1);
@@ -53,23 +50,21 @@ class ClearanceTaskTxSupportWatchdogTest {
 
         assertTrue(out.updated());
         assertFalse(out.enteredDead());
+        verify(clearanceTaskRepository, never()).findByBillNoAndMerchantId(any(), any());
         verify(tradeBillRepository).updateStatusByBillNoAndMerchantId(
                 "B1", 10001L, BillStatus.CLEARING.getCode(), BillStatus.FAILED.getCode());
     }
 
     @Test
     void watchdogFail_skipsBill_whenTaskCasMisses() {
-        ClearanceTaskEntity task = new ClearanceTaskEntity();
-        task.retryCount = 0;
-        when(clearanceTaskRepository.findByBillNoAndMerchantId("B1", 10001L))
-                .thenReturn(Optional.of(task));
         when(clearanceTaskRepository.markFailed(any(), any(), any(), any(), any(),
-                anyInt(), any(), any(), any())).thenReturn(0);
+                anyInt(), any(), any())).thenReturn(0);
 
         ClearanceFailureOutcome out = txSupport.watchdogFail("B1", 10001L);
 
         assertFalse(out.updated());
         verify(tradeBillRepository, never()).updateStatusByBillNoAndMerchantId(
                 any(), any(), any(), any());
+        verify(clearanceTaskRepository, never()).findByBillNoAndMerchantId(any(), any());
     }
 }

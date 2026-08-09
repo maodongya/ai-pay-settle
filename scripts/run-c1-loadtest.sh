@@ -48,19 +48,8 @@ log "=== C1 loadtest prepare ==="
 pkill -f 'com.payment.test.mq.MqLoadTestMain' 2>/dev/null || true
 sleep 1
 
-docker exec rmq-broker sh -c '
-cd /home/rocketmq/rocketmq-4.9.6
-for pair in \
-  "pay-access-consumer:trade_pay_topic" \
-  "pay-access-consumer:%RETRY%pay-access-consumer" \
-  "pay-calc-consumer:clearance_task_topic" \
-  "pay-calc-consumer:%RETRY%pay-calc-consumer" \
-  "pay-settlement-consumer:settle_amount_topic"
-do
-  g=${pair%%:*}; t=${pair#*:}
-  sh bin/mqadmin resetOffsetByTime -n rmq-namesrv:9876 -g "$g" -t "$t" -s now -f true >/dev/null
-done
-' || log "mq reset skipped/failed"
+# C2：抽离 offset 重置，丢掉历史脏积压
+bash "$ROOT/scripts/reset-mq-offsets.sh" || log "mq reset skipped/failed"
 
 start_app
 

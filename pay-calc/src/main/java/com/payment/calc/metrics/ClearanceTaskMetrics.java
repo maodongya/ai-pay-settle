@@ -20,11 +20,16 @@ public class ClearanceTaskMetrics {
     public static final String STAGE_FINALIZE = "finalize"; // 阶段：落库成功态
     public static final String STAGE_FAIL = "fail"; // 阶段：失败处理
 
+    public static final String SKIP_REASON_TERMINAL = "terminal"; // 终态 SUCCESS/DEAD 跳过
+    public static final String SKIP_REASON_UNCLAIMED = "unclaimed"; // 抢占失败幂等跳过
+    public static final String SKIP_REASON_OTHER = "other";
+
     private final MeterRegistry registry; // 指标注册表（可能为 null）
     private final ConcurrentHashMap<String, Timer> stageTimers = new ConcurrentHashMap<>(); // 分阶段 Timer 缓存
+    private final ConcurrentHashMap<String, Counter> skipCounters = new ConcurrentHashMap<>(); // skip 按 reason
     private final Counter successCounter; // 清算成功计数
     private final Counter failCounter; // 清算失败计数
-    private final Counter skipCounter; // 幂等跳过计数
+    private final Counter deadlockCounter; // 死锁计数（C4）
 
     /**
      * 构造：无 MeterRegistry 时降级为无指标模式。
@@ -34,11 +39,11 @@ public class ClearanceTaskMetrics {
         if (registry != null) { // 存在 Actuator/Micrometer
             successCounter = registry.counter("pay_calc_clearance_total", "status", "success"); // 成功 Counter
             failCounter = registry.counter("pay_calc_clearance_total", "status", "fail"); // 失败 Counter
-            skipCounter = registry.counter("pay_calc_clearance_total", "status", "skip"); // 跳过 Counter
+            deadlockCounter = registry.counter("pay_calc_deadlock_total"); // 死锁 Counter
         } else { // 无注册表
             successCounter = null; // 不记录成功
             failCounter = null; // 不记录失败
-            skipCounter = null; // 不记录跳过
+            deadlockCounter = null;
         }
     }
 
@@ -58,10 +63,26 @@ public class ClearanceTaskMetrics {
         }
     }
 
-    /** 记录幂等跳过（抢占失败等） */
+    /** 记录幂等跳过（默认 other） */
     public void recordSkip() {
-        if (skipCounter != null) { // Counter 可用
-            skipCounter.increment(); // 跳过 +1
+        recordSkip(SKIP_REASON_OTHER);
+    }
+
+    /** 记录幂等跳过（带 reason，C2：terminal / unclaimed） */
+    public void recordSkip(String reason) {
+        if (registry == null) {
+            return;
+        }
+        String tag = reason == null || reason.isBlank() ? SKIP_REASON_OTHER : reason;
+        skipCounters.computeIfAbsent(tag, r ->
+                        registry.counter("pay_calc_clearance_total", "status", "skip", "reason", r))
+                .increment();
+    }
+
+    /** 记录死锁（claim 重试路径，C4） */
+    public void recordDeadlock() {
+        if (deadlockCounter != null) {
+            deadlockCounter.increment();
         }
     }
 

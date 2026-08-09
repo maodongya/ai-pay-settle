@@ -9,6 +9,7 @@ import com.payment.domain.repository.ClearanceTaskRepository;
 import com.payment.domain.repository.TradeBillRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -20,12 +21,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * C1 验收：finalize 仅用 claim 上下文的 merchantId CAS，不走 findByBillNo。
+ * C1/C4 验收：finalize 用 merchantId CAS；锁序先 task 后 bill。
  */
 @ExtendWith(MockitoExtension.class)
 class ClearanceFinalizeC1Test {
@@ -37,47 +39,31 @@ class ClearanceFinalizeC1Test {
     @InjectMocks ClearanceTaskTxSupport txSupport;
 
     @Test
-    void finalizeSuccess_usesMerchantIdCas_withoutFindByBillNo() {
+    void finalizeSuccess_taskThenBill_withoutFindByBillNo() {
         ClearanceClaimContext ctx = ctx("B1", 10001L);
-        when(tradeBillRepository.updateStatusByBillNoAndMerchantId(
-                "B1", 10001L, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode()))
-                .thenReturn(1);
         when(clearanceTaskRepository.markSuccess(
                 eq("B1"), eq(10001L), eq(TaskStatus.RUNNING.getCode()),
                 eq(TaskStatus.SUCCESS.getCode()), any(LocalDateTime.class)))
                 .thenReturn(1);
+        when(tradeBillRepository.updateStatusByBillNoAndMerchantId(
+                "B1", 10001L, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode()))
+                .thenReturn(1);
 
         assertDoesNotThrow(() -> txSupport.finalizeSuccess(ctx));
 
-        verify(clearanceTaskRepository, never()).findByBillNo(any());
-        verify(tradeBillRepository, never()).findByBillNo(any());
-        verify(tradeBillRepository).updateStatusByBillNoAndMerchantId(
-                "B1", 10001L, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode());
-        verify(clearanceTaskRepository).markSuccess(
+        InOrder order = inOrder(clearanceTaskRepository, tradeBillRepository);
+        order.verify(clearanceTaskRepository).markSuccess(
                 eq("B1"), eq(10001L), eq(TaskStatus.RUNNING.getCode()),
                 eq(TaskStatus.SUCCESS.getCode()), any(LocalDateTime.class));
-    }
-
-    @Test
-    void finalizeSuccess_throwsStatusMismatch_whenBillCasMisses() {
-        ClearanceClaimContext ctx = ctx("B2", 10001L);
-        when(tradeBillRepository.updateStatusByBillNoAndMerchantId(
-                "B2", 10001L, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode()))
-                .thenReturn(0);
-
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> txSupport.finalizeSuccess(ctx));
-        assertTrue(ex.getMessage().contains("finalize bill status mismatch"));
-        verify(clearanceTaskRepository, never()).markSuccess(any(), any(), any(), any(), any());
+        order.verify(tradeBillRepository).updateStatusByBillNoAndMerchantId(
+                "B1", 10001L, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode());
         verify(clearanceTaskRepository, never()).findByBillNo(any());
+        verify(tradeBillRepository, never()).findByBillNo(any());
     }
 
     @Test
     void finalizeSuccess_throwsStatusMismatch_whenTaskCasMisses() {
         ClearanceClaimContext ctx = ctx("B3", 10001L);
-        when(tradeBillRepository.updateStatusByBillNoAndMerchantId(
-                "B3", 10001L, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode()))
-                .thenReturn(1);
         when(clearanceTaskRepository.markSuccess(
                 eq("B3"), eq(10001L), eq(TaskStatus.RUNNING.getCode()),
                 eq(TaskStatus.SUCCESS.getCode()), any(LocalDateTime.class)))
@@ -86,6 +72,24 @@ class ClearanceFinalizeC1Test {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> txSupport.finalizeSuccess(ctx));
         assertTrue(ex.getMessage().contains("finalize task status mismatch"));
+        verify(tradeBillRepository, never()).updateStatusByBillNoAndMerchantId(any(), any(), any(), any());
+        verify(clearanceTaskRepository, never()).findByBillNo(any());
+    }
+
+    @Test
+    void finalizeSuccess_throwsStatusMismatch_whenBillCasMisses() {
+        ClearanceClaimContext ctx = ctx("B2", 10001L);
+        when(clearanceTaskRepository.markSuccess(
+                eq("B2"), eq(10001L), eq(TaskStatus.RUNNING.getCode()),
+                eq(TaskStatus.SUCCESS.getCode()), any(LocalDateTime.class)))
+                .thenReturn(1);
+        when(tradeBillRepository.updateStatusByBillNoAndMerchantId(
+                "B2", 10001L, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode()))
+                .thenReturn(0);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> txSupport.finalizeSuccess(ctx));
+        assertTrue(ex.getMessage().contains("finalize bill status mismatch"));
         verify(clearanceTaskRepository, never()).findByBillNo(any());
     }
 

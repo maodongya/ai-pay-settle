@@ -38,13 +38,14 @@ public class ClearanceRetryJob {
 
     /**
      * 定时重试失败的清算任务。
+     * C2 边界：只处理 FAILED（未达 MAX_RETRY），不扫描 DEAD；DEAD 走运营台/人工重放。
      */
     @Scheduled(fixedDelayString = "${pay.clearance.retry-interval-ms:3600000}") // 默认每小时执行
     public void retryFailed() {
         if (pauseJobs) {
             return;
         }
-        clearanceTaskService.retryFailedTasks(100); // 最多重试 100 条
+        clearanceTaskService.retryFailedTasks(100); // 最多重试 100 条 FAILED
     }
 
     /**

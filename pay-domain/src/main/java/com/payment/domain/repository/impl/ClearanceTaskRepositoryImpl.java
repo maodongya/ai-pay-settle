@@ -96,10 +96,9 @@ public class ClearanceTaskRepositoryImpl implements ClearanceTaskRepository {
     @Override
     @Transactional
     public int markFailed(String billNo, Long merchantId, Integer expectedStatus, Integer failedStatus,
-                          Integer deadStatus, int maxRetry, String errorMsg,
-                          LocalDateTime nextRetryTime, LocalDateTime now) {
+                          Integer deadStatus, int maxRetry, String errorMsg, LocalDateTime now) {
         return clearanceTaskMapper.markFailed(billNo, merchantId, expectedStatus, failedStatus, deadStatus,
-                maxRetry, errorMsg, nextRetryTime, now);
+                maxRetry, errorMsg, now);
     }
 
     @Override

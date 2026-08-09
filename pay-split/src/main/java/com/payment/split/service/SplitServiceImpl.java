@@ -59,30 +59,30 @@ public class SplitServiceImpl implements SplitService {
      */
     @Override
     public void generateSplitDetail(FeeCalcResultDTO calcResult, AgentRelationDTO relation) {
+        // C5：幂等短路 — 已有分账则跳过重算，仅补缺失凭证/Outbox
         if (splitDetailRepository.existsByBillNo(calcResult.billNo)) {
+            ensureVouchersIfNeeded(calcResult);
             ensureOutboxIfNeeded(calcResult);
             return;
         }
 
         List<SplitDetailEntity> details = buildDetails(calcResult, relation);
-        splitDetailRepository.saveAll(details); // 批量保存明细
+        splitDetailRepository.saveAll(details); // 批量 INSERT（PR-A insertBatch）
 
-        if (!accountVoucherRepository.existsByBillNo(calcResult.billNo)) { // 凭证不存在
-            List<AccountVoucherEntity> vouchers = VoucherGenerator.buildVouchers(calcResult); // 生成凭证
-            accountVoucherRepository.saveAll(vouchers); // 批量保存凭证
-        }
-
-        if (calcResult.merchantIncome.compareTo(BigDecimal.ZERO) != 0) { // 商户收入非零
-            OutboxMessageEntity outbox = new OutboxMessageEntity(); // 创建发件箱消息
-            outbox.bizKey = calcResult.billNo; // 业务键
-            outbox.merchantId = calcResult.merchantId; // 分片键
-            outbox.topic = SETTLE_TOPIC; // 消息主题
-            outbox.payload = buildSettlePayload(calcResult); // 构建载荷
-            outbox.status = 0; // 待发送状态
-            outbox.createTime = LocalDateTime.now(); // 创建时间
-            outboxMessageRepository.save(outbox); // 保存消息
-        }
+        ensureVouchersIfNeeded(calcResult);
+        ensureOutboxIfNeeded(calcResult);
         businessMetrics.recordSplitDone(calcResult.billNo, 0);
+    }
+
+    /** C5：凭证缺失时批量补写 */
+    private void ensureVouchersIfNeeded(FeeCalcResultDTO calcResult) {
+        if (accountVoucherRepository.existsByBillNo(calcResult.billNo)) {
+            return;
+        }
+        List<AccountVoucherEntity> vouchers = VoucherGenerator.buildVouchers(calcResult);
+        if (!vouchers.isEmpty()) {
+            accountVoucherRepository.saveAll(vouchers);
+        }
     }
 
     /** 分账已存在时仅补写缺失 Outbox，避免重试卡住结算 */

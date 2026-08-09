@@ -41,17 +41,14 @@ public class FeeCalcServiceImpl implements FeeCalcService {
                 .orElseGet(() -> calcAndPersistShare(request));
     }
 
+    /** C5：入口已查过一次；此处直接算费，并发冲突靠唯一键 + 再读 */
     private FeeCalcResultDTO calcAndPersistShare(FeeCalcDTO request) {
+        List<com.payment.domain.entity.FeeShareRuleEntity> rules = feeShareRuleRepository.findAll();
+        FeeCalcResultDTO result = feeCalcPipeline.execute(request, rules);
+        persistIdempotent(result);
         return feeCalcResultRepository.findByBillNo(request.billNo)
                 .map(this::toDto)
-                .orElseGet(() -> {
-                    List<com.payment.domain.entity.FeeShareRuleEntity> rules = feeShareRuleRepository.findAll();
-                    FeeCalcResultDTO result = feeCalcPipeline.execute(request, rules);
-                    persistIdempotent(result);
-                    return feeCalcResultRepository.findByBillNo(request.billNo)
-                            .map(this::toDto)
-                            .orElse(result);
-                });
+                .orElse(result);
     }
 
     @Override

@@ -59,10 +59,21 @@ public interface ClearanceTaskMapper extends BaseMapper<ClearanceTaskEntity> {
                     @Param("newStatus") Integer newStatus,
                     @Param("now") LocalDateTime now);
 
-    /** 标记失败并递增重试次数，超限则置死信 */
+    /**
+     * 标记失败并原子递增重试次数，超限则置死信。
+     * next_retry_time 由 SQL 按递增前 retry_count 计算退避，避免 fail 前整行 find。
+     */
     @Update("UPDATE clearance_task SET retry_count = retry_count + 1, "
             + "status = IF(retry_count + 1 >= #{maxRetry}, #{deadStatus}, #{failedStatus}), "
-            + "error_msg = #{errorMsg}, next_retry_time = #{nextRetryTime}, update_time = #{now} "
+            + "error_msg = #{errorMsg}, "
+            + "next_retry_time = IF(retry_count + 1 >= #{maxRetry}, NULL, "
+            + "CASE retry_count "
+            + "WHEN 0 THEN DATE_ADD(#{now}, INTERVAL 1 MINUTE) "
+            + "WHEN 1 THEN DATE_ADD(#{now}, INTERVAL 5 MINUTE) "
+            + "WHEN 2 THEN DATE_ADD(#{now}, INTERVAL 15 MINUTE) "
+            + "WHEN 3 THEN DATE_ADD(#{now}, INTERVAL 30 MINUTE) "
+            + "ELSE DATE_ADD(#{now}, INTERVAL 60 MINUTE) END), "
+            + "update_time = #{now} "
             + "WHERE bill_no = #{billNo} AND merchant_id = #{merchantId} AND status = #{expectedStatus}")
     int markFailed(@Param("billNo") String billNo,
                    @Param("merchantId") Long merchantId,
@@ -71,7 +82,6 @@ public interface ClearanceTaskMapper extends BaseMapper<ClearanceTaskEntity> {
                    @Param("deadStatus") Integer deadStatus,
                    @Param("maxRetry") int maxRetry,
                    @Param("errorMsg") String errorMsg,
-                   @Param("nextRetryTime") LocalDateTime nextRetryTime,
                    @Param("now") LocalDateTime now);
 
     /** 强制置为死信状态 */

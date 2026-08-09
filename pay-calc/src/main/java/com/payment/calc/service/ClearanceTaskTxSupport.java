@@ -14,12 +14,12 @@ import com.payment.domain.repository.ClearanceTaskRepository;
 import com.payment.domain.repository.TradeBillRepository;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
  * 清算分阶段事务：缩短单次持连时间；工单/告警不在本类内执行。
+ * 写路径锁序统一：先 task，后 bill（C4）。
  */
 @Component
 public class ClearanceTaskTxSupport {
@@ -58,13 +58,19 @@ public class ClearanceTaskTxSupport {
         int billUpdated = tradeBillRepository.updateStatusByBillNoAndMerchantId(
                 billNo, merchantId, BillStatus.PENDING.getCode(), BillStatus.CLEARING.getCode());
         if (billUpdated == 0) {
+            // C3-b：CAS miss 时最多再读一次状态；已 CLEARING 则复用已读实体，禁止第三跳
             int currentStatus = tradeBillRepository.findByBillNoAndMerchantId(billNo, merchantId)
-                    .map(b -> b.status).orElse(-1);
+                    .map(b -> {
+                        bill.status = b.status;
+                        return b.status;
+                    })
+                    .orElse(-1);
             if (currentStatus != BillStatus.CLEARING.getCode()) {
                 throw new IllegalStateException("bill not ready for clearing billNo=" + billNo);
             }
+        } else {
+            bill.status = BillStatus.CLEARING.getCode();
         }
-        bill.status = BillStatus.CLEARING.getCode();
         return Optional.of(new ClearanceClaimContext(bill, merchantId));
     }
 
@@ -100,19 +106,22 @@ public class ClearanceTaskTxSupport {
         splitService.generateSplitDetail(result, relation);
     }
 
+    /**
+     * 成功落态：先 task RUNNING→SUCCESS，再 bill CLEARING→CLEARED（与 claim 锁序一致，同事务回滚）。
+     */
     @DSTransactional
     public void finalizeSuccess(ClearanceClaimContext ctx) {
         String billNo = ctx.bill().billNo;
         Long merchantId = ctx.merchantId();
-        int billUpdated = tradeBillRepository.updateStatusByBillNoAndMerchantId(
-                billNo, merchantId, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode());
-        if (billUpdated == 0) {
-            throw new IllegalStateException("finalize bill status mismatch billNo=" + billNo);
-        }
         int taskUpdated = clearanceTaskRepository.markSuccess(
                 billNo, merchantId, TaskStatus.RUNNING.getCode(), TaskStatus.SUCCESS.getCode(), LocalDateTime.now());
         if (taskUpdated == 0) {
             throw new IllegalStateException("finalize task status mismatch billNo=" + billNo);
+        }
+        int billUpdated = tradeBillRepository.updateStatusByBillNoAndMerchantId(
+                billNo, merchantId, BillStatus.CLEARING.getCode(), BillStatus.CLEARED.getCode());
+        if (billUpdated == 0) {
+            throw new IllegalStateException("finalize bill status mismatch billNo=" + billNo);
         }
     }
 
@@ -132,21 +141,24 @@ public class ClearanceTaskTxSupport {
         return failRunningTask(billNo, merchantId, "watchdog timeout");
     }
 
+    /**
+     * C3：不再为取 retryCount 而 find 整行；markFailed SQL 原子 +1；enteredDead 仅在 updated 后轻量查 status。
+     */
     private ClearanceFailureOutcome failRunningTask(String billNo, Long merchantId, String rawError) {
-        int retryCount = clearanceTaskRepository.findByBillNoAndMerchantId(billNo, merchantId)
-                .map(task -> task.retryCount).orElse(0);
-        LocalDateTime nextRetry = LocalDateTime.now().plus(backoffDuration(retryCount + 1));
         String errorMsg = truncateError(rawError);
+        LocalDateTime now = LocalDateTime.now();
         int updated = clearanceTaskRepository.markFailed(
                 billNo, merchantId, TaskStatus.RUNNING.getCode(),
                 TaskStatus.FAILED.getCode(), TaskStatus.DEAD.getCode(),
-                MAX_RETRY, errorMsg, nextRetry, LocalDateTime.now());
+                MAX_RETRY, errorMsg, now);
         if (updated == 0) {
             return new ClearanceFailureOutcome(billNo, errorMsg, false, false);
         }
+        boolean enteredDead = clearanceTaskRepository.findStatusByBillNoAndMerchantId(billNo, merchantId)
+                .map(status -> status == TaskStatus.DEAD.getCode())
+                .orElse(false);
         tradeBillRepository.updateStatusByBillNoAndMerchantId(
                 billNo, merchantId, BillStatus.CLEARING.getCode(), BillStatus.FAILED.getCode());
-        boolean enteredDead = retryCount + 1 >= MAX_RETRY;
         return new ClearanceFailureOutcome(billNo, errorMsg, enteredDead, true);
     }
 
@@ -164,15 +176,5 @@ public class ClearanceTaskTxSupport {
             return null;
         }
         return msg.length() <= ERROR_MSG_MAX ? msg : msg.substring(0, ERROR_MSG_MAX);
-    }
-
-    private static Duration backoffDuration(int retryCount) {
-        return switch (retryCount) {
-            case 1 -> Duration.ofMinutes(1);
-            case 2 -> Duration.ofMinutes(5);
-            case 3 -> Duration.ofMinutes(15);
-            case 4 -> Duration.ofMinutes(30);
-            default -> Duration.ofMinutes(60);
-        };
     }
 }

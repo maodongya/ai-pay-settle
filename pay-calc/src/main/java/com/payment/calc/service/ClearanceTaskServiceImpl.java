@@ -1,7 +1,6 @@
 package com.payment.calc.service; // 清算计算服务包
 
 import com.payment.api.dto.AgentRelationDTO; // 代理关系 DTO
-import com.payment.api.dto.FeeCalcResultDTO; // 费用计算结果 DTO
 import com.payment.api.service.ClearanceTaskService; // 清算任务服务接口
 import com.payment.api.service.MerchantValidateService; // 商户校验服务接口
 import com.payment.calc.metrics.ClearanceTaskMetrics; // calc 清算监控指标
@@ -24,9 +23,13 @@ import com.payment.mq.exception.NonRetryableException; // 不可 MQ 重试异常
 import org.slf4j.Logger; // 日志接口
 import org.slf4j.LoggerFactory; // 日志工厂
 import com.payment.domain.support.ShardScanSupport;
+import java.sql.SQLException;
 import java.time.LocalDateTime; // 本地日期时间
 import java.util.List; // 列表
 import java.util.Optional; // Optional
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service; // Spring 服务注解
 
 /**
@@ -37,6 +40,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
 
     private static final Logger log = LoggerFactory.getLogger(ClearanceTaskServiceImpl.class); // 日志记录器
     private static final int MAX_RETRY = 5; // 最大业务重试次数（L2）
+    /** C4：claim 死锁最多尝试次数（含首次） */
+    private static final int CLAIM_DEADLOCK_MAX_ATTEMPTS = 3;
 
     private final ClearanceTaskRepository clearanceTaskRepository; // 清算任务仓储
     private final TradeBillRepository tradeBillRepository; // 交易账单仓储
@@ -104,21 +109,28 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     public void executeTask(String billNo, Long merchantId) {
         long consumeStart = clearanceTaskMetrics.nanoTime(); // 整单消费起点
         boolean success = false; // 是否清算成功
+        boolean skipped = false; // 是否幂等跳过（不计入 fail）
         try { // 主流程
             Long resolvedMerchantId = resolveMerchantId(billNo, merchantId); // 解析分片键
 
-            if (shouldSkipTerminalTask(billNo, resolvedMerchantId)) { // PR-C2：终态任务快速跳过
-                clearanceTaskMetrics.recordSkip(); // 跳过计数
-                return; // ACK，避免 claim 空转
+            Optional<Integer> terminalStatus = findTerminalStatus(billNo, resolvedMerchantId);
+            if (terminalStatus.isPresent()) { // PR-C2：终态任务快速跳过
+                clearanceTaskMetrics.recordSkip(ClearanceTaskMetrics.SKIP_REASON_TERMINAL);
+                skipped = true; // 先标记，避免 finally 计入 fail
+                if (terminalStatus.get() == TaskStatus.DEAD.getCode()) {
+                    throw new NonRetryableException("clearance task already DEAD billNo=" + billNo);
+                }
+                return; // SUCCESS → ACK
             }
 
             long claimStart = clearanceTaskMetrics.nanoTime(); // 阶段 1 起点
             Optional<ClearanceClaimContext> claimOpt =
-                    clearanceTaskTxSupport.claimAndMarkClearing(billNo, resolvedMerchantId); // 抢占+标 CLEARING
+                    claimWithDeadlockRetry(billNo, resolvedMerchantId); // C4：死锁有限重试
             clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_CLAIM, claimStart); // 记录 claim 耗时
             if (claimOpt.isEmpty()) { // 未抢到或已处理
+                skipped = true; // 先标记，DEAD NonRetryable 也不计入 fail
                 handleUnclaimed(billNo, resolvedMerchantId); // 幂等/DEAD 短路
-                clearanceTaskMetrics.recordSkip(); // 跳过计数
+                clearanceTaskMetrics.recordSkip(ClearanceTaskMetrics.SKIP_REASON_UNCLAIMED); // 跳过计数
                 return; // ACK 结束
             }
             ClearanceClaimContext claimCtx = claimOpt.get(); // claim 上下文
@@ -148,8 +160,58 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
                 notifyIfEnteredDead(failure);
                 clearanceTaskMetrics.recordStage(ClearanceTaskMetrics.STAGE_FAIL, failStart); // 记录 fail 耗时
             }
-        } finally { // 无论成败记录整单耗时
-            clearanceTaskMetrics.recordConsume(consumeStart, success); // 写入 consume_duration
+        } finally { // 跳过不计 fail；成功/失败记 consume
+            if (!skipped) {
+                clearanceTaskMetrics.recordConsume(consumeStart, success);
+            }
+        }
+    }
+
+    /**
+     * C4：claim 外包死锁重试（事务外），退避 5/10/20ms。
+     */
+    private Optional<ClearanceClaimContext> claimWithDeadlockRetry(String billNo, Long merchantId) {
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= CLAIM_DEADLOCK_MAX_ATTEMPTS; attempt++) {
+            try {
+                return clearanceTaskTxSupport.claimAndMarkClearing(billNo, merchantId);
+            } catch (RuntimeException e) {
+                if (!isDeadlock(e) || attempt == CLAIM_DEADLOCK_MAX_ATTEMPTS) {
+                    throw e;
+                }
+                last = e;
+                clearanceTaskMetrics.recordDeadlock();
+                log.warn("clearance claim deadlock billNo={} attempt={}/{}", billNo, attempt, CLAIM_DEADLOCK_MAX_ATTEMPTS);
+                sleepQuietly(5L << (attempt - 1)); // 5, 10, 20 ms
+            }
+        }
+        if (last != null) {
+            throw last;
+        }
+        return Optional.empty();
+    }
+
+    private static boolean isDeadlock(Throwable e) {
+        for (Throwable c = e; c != null; c = c.getCause()) {
+            if (c instanceof DeadlockLoserDataAccessException
+                    || c instanceof CannotAcquireLockException
+                    || c instanceof PessimisticLockingFailureException) {
+                return true;
+            }
+            if (c instanceof SQLException sql) {
+                if (sql.getErrorCode() == 1213 || "40001".equals(sql.getSQLState())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -171,22 +233,18 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
     }
 
     /**
-     * PR-C2：终态任务（SUCCESS/DEAD）在 claim 前快速跳过，减少脏 MQ 空转。
+     * PR-C2：终态任务（SUCCESS/DEAD）在 claim 前识别，减少脏 MQ 空转。
      */
-    private boolean shouldSkipTerminalTask(String billNo, Long merchantId) {
+    private Optional<Integer> findTerminalStatus(String billNo, Long merchantId) {
         Optional<Integer> statusOpt = clearanceTaskRepository.findStatusByBillNoAndMerchantId(billNo, merchantId);
         if (statusOpt.isEmpty()) {
-            return false;
+            return Optional.empty();
         }
         int status = statusOpt.get();
-        if (status == TaskStatus.SUCCESS.getCode()) {
-            return true;
+        if (status == TaskStatus.SUCCESS.getCode() || status == TaskStatus.DEAD.getCode()) {
+            return Optional.of(status);
         }
-        if (status == TaskStatus.DEAD.getCode()) {
-            log.debug("clearance fast-skip dead task billNo={}", billNo);
-            return true;
-        }
-        return false;
+        return Optional.empty();
     }
 
     /**
@@ -203,7 +261,8 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
         }
         if (status == TaskStatus.DEAD.getCode()) {
             log.warn("clearance skip dead task billNo={}", billNo);
-            return;
+            clearanceTaskMetrics.recordSkip(ClearanceTaskMetrics.SKIP_REASON_TERMINAL);
+            throw new NonRetryableException("clearance task already DEAD billNo=" + billNo);
         }
         if (status == TaskStatus.RUNNING.getCode()) {
             return;
@@ -227,6 +286,7 @@ public class ClearanceTaskServiceImpl implements ClearanceTaskService {
 
     /**
      * 重试失败任务，限制单次处理数量（由 ClearanceRetryJob 调用）。
+     * 边界：只扫 FAILED（retry_count &lt; MAX），不扫 DEAD；DEAD 走人工/运营台重放。
      */
     @Override // 实现接口方法
     public void retryFailedTasks(int limit) {
